@@ -1,0 +1,1 @@
+- Change WriteFile in spark-local to create directories (when those do not exist) when file is being opened

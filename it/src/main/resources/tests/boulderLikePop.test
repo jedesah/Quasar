@@ -1,6 +1,8 @@
 {
   "name": "population of Boulder-like towns",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "zips.data",
 
   "query": "select city, state, sum(pop) as totalPop from zips where city like \"BOULDER%\" group by city, state",

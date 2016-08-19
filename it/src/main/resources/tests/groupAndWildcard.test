@@ -1,6 +1,8 @@
 {
   "name": "select wildcard with group by",
 
+  "backends": { "postgresql": "pending" },
+
   "query": "select * from zips where _id like \"8030%\" group by city",
 
   "predicate": "containsExactly",

@@ -1,0 +1,1 @@
+- clean up http4s thread pools in regression tests

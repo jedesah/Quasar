@@ -107,10 +107,10 @@ server, the tests are run against all supported versions of MongoDB, as well as 
 To build a JAR for the REPL, which allows entering commands at a command-line prompt, execute the following command:
 
 ```bash
-./sbt 'project repl' oneJar
+./sbt 'repl/assembly'
 ```
 
-The path of the JAR will be `./repl/target/scala-2.11/quasar-repl_2.11-[version]-one-jar.jar`, where `[version]` is the Quasar version number.
+The path of the JAR will be `./repl/target/scala-2.11/quasar-repl-assembly-[version].jar`, where `[version]` is the Quasar version number.
 
 To run the JAR, execute the following command:
 
@@ -123,10 +123,10 @@ java -jar [<path to jar>] [-c <config file>]
 To build a JAR containing a lightweight HTTP server that allows you to programmatically interact with Quasar, execute the following command:
 
 ```bash
-./sbt 'project web' oneJar
+./sbt 'web/assembly'
 ```
 
-The path of the JAR will be `./web/target/scala-2.11/quasar-web_2.11-[version]-one-jar.jar`, where `[version]` is the Quasar version number.
+The path of the JAR will be `./web/target/scala-2.11/quasar-web-assembly-[version].jar`, where `[version]` is the Quasar version number.
 
 To run the JAR, execute the following command:
 

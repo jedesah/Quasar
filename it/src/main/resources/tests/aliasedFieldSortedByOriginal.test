@@ -1,5 +1,6 @@
 {
     "name": "select aliased field sorted by original name",
+    "backends": { "postgresql": "pending" },
     "data": "zips.data",
     "query": "SELECT state AS `Result Alias`, COUNT(*) FROM zips GROUP BY state ORDER BY state",
     "predicate": "containsAtLeast",

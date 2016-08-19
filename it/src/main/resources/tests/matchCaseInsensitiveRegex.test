@@ -1,5 +1,6 @@
 {
     "name": "match on case-insensitive string",
+    "backends": { "postgresql": "pending" },
     "data": "zips.data",
     "query": "select * from zips where city ~* \"^bOu\"",
     "predicate": "containsAtLeast",

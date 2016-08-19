@@ -26,19 +26,53 @@ import scalaz.stream._
 import scodec.bits.{ByteVector}
 
 object Zip {
-  def zipFiles[F[_]: Monad](files: List[(RelFile[Sandboxed], Process[F, ByteVector])]):
-      Process[F, ByteVector] = {
-    // First construct a single Process of Ops which can be performed in
-    // sequence to produce the entire archive.
-    sealed trait Op
-    object Op {
-      final case object Start extends Op
-      final case class StartEntry(entry: jzip.ZipEntry) extends Op
-      final case class Chunk(bytes: ByteVector) extends Op
-      final case object EndEntry extends Op
-      final case object End extends Op
+  // First construct a single Process of Ops which can be performed in
+  // sequence to produce the entire archive.
+  private sealed trait Op
+  private object Op {
+    final case object Start                           extends Op
+    final case class StartEntry(entry: jzip.ZipEntry) extends Op
+    final case class Chunk(bytes: ByteVector)         extends Op
+    final case object EndEntry                        extends Op
+    final case object End                             extends Op
+  }
+  // Wrap up ZipOutputStream's statefulness in a class offering just two
+  // mutating operations: one to accept an Op to be processed, and another
+  // to poll for data that's been written.
+  private class Buffer[F[_]: Monad] {
+    // Assumes that the var is private to Buffer and exposed methods are private to
+    // method zipFiles. Further assumes that usage by Process is without contention.
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
+    private[this] var chunks = ByteVector.empty
+
+    private def append(bytes: ByteVector) = chunks = chunks ++ bytes
+
+    private val sink = {
+      val os = new java.io.OutputStream {
+        def write(b: Int) = append(ByteVector(b.toByte))
+
+        // NB: overriding here to process each buffer-worth coming from the ZipOS in one call
+        override def write(b: Array[Byte], off: Int, len: Int) = append(ByteVector(b, off, len))
+      }
+      new jzip.ZipOutputStream(os)
     }
 
+    def accept(op: Op): F[Unit] = (op match {
+      case Op.Start             => ()
+      case Op.StartEntry(entry) => sink.putNextEntry(entry)
+      case Op.Chunk(bytes)      => sink.write(bytes.toArray)
+      case Op.EndEntry          => sink.closeEntry
+      case Op.End               => sink.close
+    }).point[F]
+
+    def poll: F[ByteVector] = {
+      val result = chunks
+      chunks = ByteVector.empty
+      result
+    }.point[F]
+  }
+
+  def zipFiles[F[_]: Monad](files: List[(RelFile[Sandboxed], Process[F, ByteVector])]): Process[F, ByteVector] = {
     val ops: Process[F, Op] = {
       def fileOps(file: RelFile[Sandboxed], bytes: Process[F, ByteVector]) =
         Process.emit(Op.StartEntry(new jzip.ZipEntry(posixCodec.printPath(file)))) ++
@@ -50,47 +84,11 @@ object Zip {
       Process.emit(Op.End)
     }
 
-    // Wrap up ZipOutputStream's statefulness in a class offering just two
-    // mutating operations: one to accept an Op to be processed, and another
-    // to poll for data that's been written.
-    class Buffer {
-      // Assumes that the var is private to Buffer and exposed methods are private to the
-      // enclosing method. Further assumes that usage by Process is without contention.
-      @SuppressWarnings(Array("org.wartremover.warts.Var"))
-      private var chunks = ByteVector.empty
-
-      private def append(bytes: ByteVector) = chunks = chunks ++ bytes
-
-      private val sink = {
-        val os = new java.io.OutputStream {
-          def write(b: Int) = append(ByteVector(b.toByte))
-
-          // NB: overriding here to process each buffer-worth coming from the ZipOS in one call
-          override def write(b: Array[Byte], off: Int, len: Int) = append(ByteVector(b, off, len))
-        }
-        new jzip.ZipOutputStream(os)
-      }
-
-      def accept(op: Op): F[Unit] = (op match {
-        case Op.Start             => ()
-        case Op.StartEntry(entry) => sink.putNextEntry(entry)
-        case Op.Chunk(bytes)      => sink.write(bytes.toArray)
-        case Op.EndEntry          => sink.closeEntry
-        case Op.End               => sink.close
-      }).point[F]
-
-      def poll: F[ByteVector] = {
-        val result = chunks
-        chunks = ByteVector.empty
-        result
-      }.point[F]
-    }
-
     // Fold the allocation of Buffer instances in to the processing
     // of Ops, so that a new instance is created as needed each time
     // the resulting process is run, then flatMap so that each chunk
     // can be handled in Task.
-    ops.zipWithState[Option[Buffer]](None) {
+    ops.zipWithState[Option[Buffer[F]]](None) {
       case (_, None)         => Some(new Buffer)
       case (Op.End, Some(_)) => None
       case (_, buf@Some(_))  => buf

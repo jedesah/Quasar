@@ -16,25 +16,69 @@
 
 package quasar.physical.postgresql
 
-import quasar.fs._
-import quasar.fs.mount.FileSystemDef, FileSystemDef.DefErrT
+import quasar.Predef._
+import quasar.effect.{KeyValueStore, MonotonicSeq}
+import quasar.fp.{free, TaskRef}, free._
+import quasar.fp.free.{injectNT, mapSNT, EnrichNT}
+import quasar.fs._, ReadFile.ReadHandle, WriteFile.WriteHandle
+import quasar.fs.mount.{ConnectionUri, FileSystemDef}, FileSystemDef.DefErrT
 
+import doobie.imports._
 import scalaz._, Scalaz._
 import scalaz.concurrent.Task
 
+// NB [quasar.physical.postgresql]:
+// - The PostgreSQL Connector is incomplete and under development.
+// - Queries are constructed manually instead of using doobie's sql interpolator
+//   due to PreparedStatements not handling dynamic table names. The current
+//   approach does not prevent SQL injection attacks and should be revisited.
 package object fs {
   val FsType = FileSystemType("postgresql")
 
-  def definition[S[_]](implicit S0: Task :<: S, S1: PhysErr :<: S):
-      FileSystemDef[Free[S, ?]] =
+  type Eff1[A] = Coproduct[
+                    KeyValueStore[ReadHandle,  impl.ReadStream[ConnectionIO], ?],
+                    KeyValueStore[WriteHandle, writefile.TableName,           ?],
+                    A]
+  type Eff0[A] = Coproduct[MonotonicSeq, Eff1, A]
+  type Eff[A]  = Coproduct[ConnectionIO, Eff0, A]
+
+  def interp[S[_]](
+      uri: ConnectionUri
+    )(implicit
+      S0: Task :<: S,
+      S1: PhysErr :<: S
+    ): Free[S, Free[Eff, ?] ~> Free[S, ?]] = {
+
+    val transactor = DriverManagerTransactor[Task]("org.postgresql.Driver", uri.value)
+
+    def taskInterp: Task[Free[Eff, ?] ~> Free[S, ?]]  =
+      (TaskRef(Map.empty[ReadHandle,  impl.ReadStream[ConnectionIO]]) |@|
+       TaskRef(Map.empty[WriteHandle, writefile.TableName])           |@|
+       TaskRef(0L)
+      )((kvR, kvW, i) =>
+        mapSNT(injectNT[Task, S] compose (
+          transactor.trans                    :+:
+          MonotonicSeq.fromTaskRef(i)         :+:
+          KeyValueStore.impl.fromTaskRef(kvR) :+:
+          KeyValueStore.impl.fromTaskRef(kvW))))
+
+    lift(taskInterp).into
+  }
+
+  def definition[S[_]](implicit
+      S0: Task :<: S,
+      S1: PhysErr :<: S
+    ): FileSystemDef[Free[S, ?]] =
     FileSystemDef.fromPF {
       case (FsType, uri) =>
-        FileSystemDef.DefinitionResult[Free[S, ?]](
-          interpretFileSystem(
-            Empty.queryFile[Free[S, ?]],
-            Empty.readFile[Free[S, ?]],
-            Empty.writeFile[Free[S, ?]],
-            Empty.manageFile[Free[S, ?]]),
-          Free.point(())).point[DefErrT[Free[S, ?], ?]]
+        interp(uri).map { run =>
+          FileSystemDef.DefinitionResult[Free[S, ?]](
+            run compose interpretFileSystem(
+              queryfile.interpret,
+              readfile.interpret,
+              writefile.interpret,
+              managefile.interpret),
+            Free.point(()))
+        }.liftM[DefErrT]
     }
 }

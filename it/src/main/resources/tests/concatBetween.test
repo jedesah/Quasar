@@ -1,5 +1,6 @@
 {
     "name": "concat BETWEEN with other fields",
+    "backends": { "postgresql": "pending" },
     "data": "zips.data",
     "query": "select city, pop, pop between 1000 and 10000 from zips",
     "predicate": "containsAtLeast",

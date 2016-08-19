@@ -31,7 +31,7 @@ import com.mongodb.bulk.BulkWriteResult
 import com.mongodb.client.model._
 import com.mongodb.async._
 import com.mongodb.async.client._
-import org.bson.BsonDocument
+import org.bson.{BsonBoolean, BsonDocument}
 import scalaz.{Failure => _, _}, Scalaz._
 import scalaz.concurrent.Task
 import scalaz.stream._
@@ -96,8 +96,8 @@ object MongoDbIO {
       .void
 
   def collectionExists(c: Collection): MongoDbIO[Boolean] =
-    collectionsIn(c.databaseName)
-      .exists(_.collectionName == c.collectionName)
+    collectionsIn(c.database)
+      .exists(_.collection == c.collection)
       .runLastOr(false)
 
   /** All discoverable collections on the server. */
@@ -105,24 +105,24 @@ object MongoDbIO {
     databaseNames flatMap collectionsIn
 
   /** The collections in the named database. */
-  def collectionsIn(dbName: String): Process[MongoDbIO, Collection] =
+  def collectionsIn(dbName: DatabaseName): Process[MongoDbIO, Collection] =
     database(dbName).liftM[Process]
-      .flatMap(db => iterableToProcess(db.listCollectionNames))
+      .flatMap(db => iterableToProcess(db.listCollectionNames).map(CollectionName(_)))
       .map(Collection(dbName, _))
 
   /** Creates the given collection. */
   def createCollection(c: Collection): MongoDbIO[Unit] =
-    database(c.databaseName) flatMap (db =>
-      async[java.lang.Void](db.createCollection(c.collectionName, _)).void)
+    database(c.database) flatMap (db =>
+      async[java.lang.Void](db.createCollection(c.collection.value, _)).void)
 
   /** Names of all discoverable databases on the server. */
-  def databaseNames: Process[MongoDbIO, String] =
+  def databaseNames: Process[MongoDbIO, DatabaseName] =
     client.liftM[Process]
-      .flatMap(c => iterableToProcess(c.listDatabaseNames))
+      .flatMap(c => iterableToProcess(c.listDatabaseNames).map(DatabaseName(_)))
       .onFailure {
         case t: MongoCommandException =>
           credentials.liftM[Process]
-            .flatMap(ys => Process.emitAll(ys.map(_.getSource).distinct))
+            .flatMap(ys => Process.emitAll(ys.map(y => DatabaseName(y.getSource)).distinct))
 
         case t =>
           Process.fail(t)
@@ -131,7 +131,7 @@ object MongoDbIO {
   def dropCollection(c: Collection): MongoDbIO[Unit] =
     collection(c) flatMap (mc => async(mc.drop).void)
 
-  def dropDatabase(named: String): MongoDbIO[Unit] =
+  def dropDatabase(named: DatabaseName): MongoDbIO[Unit] =
     database(named) flatMap (d => async(d.drop).void)
 
   def dropAllDatabases: MongoDbIO[Unit] =
@@ -144,15 +144,15 @@ object MongoDbIO {
   /** Returns the name of the first database where an insert to the collection
     * having the given name succeeds.
     */
-  def firstWritableDb(collName: String): OptionT[MongoDbIO, String] = {
+  def firstWritableDb(collName: CollectionName): OptionT[MongoDbIO, DatabaseName] = {
     type M[A] = OptionT[MongoDbIO, A]
 
     val testDoc = Bson.Doc(ListMap("a" -> Bson.Int32(1)))
 
-    def canWriteToCol(coll: Collection): M[String] =
+    def canWriteToCol(coll: Collection): M[DatabaseName] =
       insertAny[Id](coll, testDoc.repr)
         .filter(_ == 1)
-        .as(coll.databaseName)
+        .as(coll.database)
         .attempt
         .flatMap(r => OptionT(r.toOption.point[MongoDbIO]))
 
@@ -218,7 +218,7 @@ object MongoDbIO {
     val ms = MonadState[F, MapReduceIterable[BsonDocument]]
 
     def withAction(actOut: ActionedOutput): F[Unit] =
-      actOut.databaseName.traverse_[F](n => ms.modify(_.databaseName(n)))     *>
+      actOut.database.traverse_[F](n => ms.modify(_.databaseName(n.value)))     *>
       actOut.shardOutputCollection.traverse_[F](s => ms.modify(_.sharded(s))) *>
       actOut.action.nonAtomic.traverse_[F](s => ms.modify(_.nonAtomic(s)))    *>
       ms.modify(_.action(actOut.action match {
@@ -230,7 +230,7 @@ object MongoDbIO {
     mapReduceIterable(src, cfg) flatMap { it =>
       val itWithOutput =
         dst.withAction.traverse_(withAction)
-          .exec(it.collectionName(dst.collectionName))
+          .exec(it.collectionName(dst.collection.value))
 
       async[java.lang.Void](itWithOutput.toCollection).void
     }
@@ -250,7 +250,7 @@ object MongoDbIO {
     else
       collection(src)
         .flatMap(c => async[java.lang.Void](c.renameCollection(
-          new MongoNamespace(dst.databaseName, dst.collectionName),
+          dst.asNamespace,
           (new RenameCollectionOptions) dropTarget dropDst,
           _)))
         .void
@@ -258,7 +258,7 @@ object MongoDbIO {
 
   /** Returns the version of the MongoDB server the client is connected to. */
   def serverVersion: MongoDbIO[List[Int]] = {
-    def lookupVersion(dbName: String): MongoDbIO[PhysicalError \/ List[Int]] = {
+    def lookupVersion(dbName: DatabaseName): MongoDbIO[PhysicalError \/ List[Int]] = {
       val cmd = Bson.Doc(ListMap("buildinfo" -> Bson.Int32(1)))
 
       runCommand(dbName, cmd).attemptMongo.run map (_ flatMap (doc =>
@@ -277,12 +277,33 @@ object MongoDbIO {
     }
 
     // NB: use "admin" DB as fallback if no database is known to exist.
-    (databaseNames ++ Process.emit("admin"))
+    (databaseNames ++ Process.emit(DatabaseName("admin")))
       .evalMap(lookupVersion)
       .takeThrough(_.isLeft)
       .runLog
       .map(_.toVector.separate)
       .flatMap(finalize)
+  }
+
+  def collectionStatistics(coll: Collection): MongoDbIO[CollectionStatistics] = {
+    val cmd = Bson.Doc(ListMap("collStats" -> coll.collection.bson))
+
+    def intValue(doc: BsonDocument, field: String): String \/ Long =
+      \/.fromTryCatchNonFatal(Option(doc.getInt32(field)).map(_.longValue) \/>
+        s"expected field: $field").fold(_.getMessage.left, ι)
+
+    def booleanValue(doc: BsonDocument, field: String): Boolean =
+      doc.get(field, BsonBoolean.FALSE) != BsonBoolean.FALSE
+
+    runCommand(coll.database, cmd).map(doc =>
+      (for {
+        count    <- intValue(doc, "count")
+        dataSize <- intValue(doc, "size")
+        sharded  =  booleanValue(doc, "sharded")
+      } yield CollectionStatistics(count, dataSize, sharded)))
+        .flatMap(_.fold(
+          err => fail(new MongoException("could not read collection statistics: " + err)),
+          _.point[MongoDbIO]))
   }
 
   def fail[A](t: Throwable): MongoDbIO[A] =
@@ -375,12 +396,12 @@ object MongoDbIO {
     MongoDbIO(_.getSettings.getCredentialList.asScala.toList)
 
   private[mongodb] def collection(c: Collection): MongoDbIO[MongoCollection[BsonDocument]] =
-    database(c.databaseName).map(_.getCollection(c.collectionName, classOf[BsonDocument]))
+    database(c.database).map(_.getCollection(c.collection.value, classOf[BsonDocument]))
 
-  private def database(named: String): MongoDbIO[MongoDatabase] =
-    MongoDbIO(_ getDatabase named)
+  private def database(named: DatabaseName): MongoDbIO[MongoDatabase] =
+    MongoDbIO(_ getDatabase named.value)
 
-  private def runCommand(dbName: String, cmd: Bson.Doc): MongoDbIO[BsonDocument] =
+  private def runCommand(dbName: DatabaseName, cmd: Bson.Doc): MongoDbIO[BsonDocument] =
     database(dbName) flatMap (db => async[BsonDocument](db.runCommand(cmd, classOf[BsonDocument], _)))
 
   private def iterableToProcess[A](it: MongoIterable[A]): Process[MongoDbIO, A] = {

@@ -1,0 +1,2 @@
+- Replace one-jar with sbt-assembly for "fat jar" creation
+  - Add the necessary exclusions to spark dependencies to play nice with assembly

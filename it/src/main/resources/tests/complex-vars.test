@@ -1,6 +1,8 @@
 {
   "name": "variable with a non-trivial value",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "days.data",
 
   "variables": {

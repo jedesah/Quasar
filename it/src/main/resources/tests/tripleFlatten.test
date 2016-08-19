@@ -1,6 +1,9 @@
 {
     "name": "triple flatten with mixed content",
-    "backends": { "mongodb_read_only": "pending" },
+    "backends": {
+        "mongodb_read_only": "pending",
+        "postgresql":        "pending"
+    },
     "data": "nested.data",
     "query": "select topObj{*}{*}{*} from nested",
     "NB": "containsExactly has a bug that gets confused on duplicate results (#732).",

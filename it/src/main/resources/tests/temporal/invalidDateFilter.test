@@ -1,6 +1,8 @@
 {
   "name": "filter on date part, where the field isn't a timestamp",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "../days.data",
 
   "query": "select day from `../days` where date_part(\"dow\", epoch) >= 3",

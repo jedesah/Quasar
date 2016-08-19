@@ -1,6 +1,10 @@
 {
   "name": "cross join with conditions that must be pushed ahead of the join (or else the join explodes, taking several minutes to complete)",
-  "backends": { "mongodb_read_only": "pending" },
+
+  "backends": {
+    "mongodb_read_only": "pending",
+    "postgresql":        "pending"
+  },
 
   "data": "../largeZips.data",
 

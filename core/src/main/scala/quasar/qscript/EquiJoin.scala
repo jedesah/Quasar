@@ -102,8 +102,8 @@ object EquiJoin {
         def apply[A](ej: EquiJoin[T, A]) =
           EquiJoin(
             ej.src,
-            freeTransCata(ej.lBranch)(liftCo(opt.applyToFreeQS[QScriptTotal[T, ?], Hole])),
-            freeTransCata(ej.rBranch)(liftCo(opt.applyToFreeQS[QScriptTotal[T, ?], Hole])),
+            freeTransCata(ej.lBranch)(liftCo(opt.applyToFreeQS[QScriptTotal[T, ?]])),
+            freeTransCata(ej.rBranch)(liftCo(opt.applyToFreeQS[QScriptTotal[T, ?]])),
             normalizeMapFunc(ej.lKey),
             normalizeMapFunc(ej.rKey),
             ej.f,

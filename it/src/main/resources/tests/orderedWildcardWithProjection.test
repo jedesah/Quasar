@@ -1,6 +1,9 @@
 {
     "name": "wildcard with projection and synthetic field",
-    "backends": { "mongodb_read_only": "pending" },
+    "backends": {
+        "mongodb_read_only": "pending",
+        "postgresql":        "pending"
+    },
     "data": "largeZips.data",
     "query": "select *, pop * 10 from largeZips order by pop / 10 desc",
     "predicate": "equalsInitial",

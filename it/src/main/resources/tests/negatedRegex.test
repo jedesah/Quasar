@@ -1,6 +1,9 @@
 {
     "name": "negate matches in filter and projection",
-    "backends": { "mongodb_read_only": "pending" },
+    "backends": {
+        "mongodb_read_only": "pending",
+        "postgresql":        "pending"
+    },
     "data": "largeZips.data",
     "query": "select city, city !~ \"A\" from largeZips where city !~ \"CHI\"",
     "predicate": "containsAtLeast",

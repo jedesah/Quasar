@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package quasar.physical.marklogic.xcc
+package quasar.physical.marklogic.fs
 
 import quasar.Predef._
 import quasar.Data

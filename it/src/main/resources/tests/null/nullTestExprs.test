@@ -1,5 +1,6 @@
 {
     "name": "expressions with `= null` and `is null`",
+    "backends": { "postgresql": "pending" },
     "data": "nulls.data",
     "query": "select name,
                      val, val = null, val is null, val is not null,

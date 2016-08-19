@@ -18,7 +18,7 @@ package quasar.physical.marklogic.qscript
 
 import quasar.Predef._
 import quasar.Planner.PlannerError
-import quasar.physical.marklogic.XQuery
+import quasar.physical.marklogic.xquery.XQuery
 import quasar.qscript._
 
 import matryoshka._

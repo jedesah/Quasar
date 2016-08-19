@@ -20,12 +20,12 @@ import quasar.Predef._
 import quasar.fp._
 import quasar.physical.mongodb.accumulator._
 import quasar.physical.mongodb.expression._
+import quasar.physical.mongodb.workflow._
 import quasar.qscript._
 
 import scalaz._, Scalaz._
 
 private[mongodb] object execution {
-  import Workflow._
 
   final case class Count(
     query:      Option[Selector],
@@ -59,7 +59,7 @@ private[mongodb] object execution {
       pipeline match {
         case List(
           PipelineOpCore($GroupF((), Grouped(map), by)),
-          PipelineOpCore($ProjectF((), Reshape(fields), IdHandling.IgnoreId | IdHandling.ExcludeId)))
+          PipelineOpCore($ProjectF((), Reshape(fields), IgnoreId | ExcludeId)))
             if map.isEmpty && fields.size ≟ 1 =>
           fields.headOption.fold[Option[(BsonField.Name, BsonField.Name)]] (None)(field =>
             (by, field) match {

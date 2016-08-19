@@ -21,22 +21,50 @@ import quasar.{RenderTree, Terminal}
 import quasar.fp._
 import quasar.fs._
 
+import scala.AnyVal
 import scala.util.parsing.combinator._
 
+import com.mongodb.MongoNamespace
 import scalaz._, Scalaz._
 import pathy.Path.{dir => pDir, file => pFile, _}
 
-final case class Collection(databaseName: String, collectionName: String) {
+
+// TODO: use Refined to constrain the value here
+final case class DatabaseName(value: String) extends AnyVal {
+  def bson: Bson = Bson.Text(value)
+}
+object DatabaseName {
+  implicit def equal: Equal[DatabaseName] = Equal.equalA
+}
+
+// TODO: use Refined to constrain the value here
+final case class CollectionName(value: String) extends AnyVal {
+  def isDescendantOf(ancestor: CollectionName): Boolean =
+    if (ancestor.value == "") true
+    else value startsWith (ancestor.value + ".")
+
+  def bson: Bson = Bson.Text(value)
+}
+object CollectionName {
+  implicit def equal: Equal[CollectionName] = Equal.equalA
+}
+
+/** Identifies a collection in a specific database. Sometimes referred to as a
+  * "namespace" in MongoDB docs.
+  */
+final case class Collection(database: DatabaseName, collection: CollectionName) {
   import Collection._
 
   /** Convert this collection to a file. */
   def asFile: AFile = {
-    val db   = DatabaseNameUnparser(databaseName)
-    val segs = CollectionNameUnparser(collectionName).reverse
+    val db   = DatabaseNameUnparser(database)
+    val segs = CollectionNameUnparser(collection).reverse
     val f    = segs.headOption getOrElse db
 
     (segs ::: List(db)).drop(1).foldRight(rootDir)((d, p) => p </> pDir(d)) </> pFile(f)
   }
+
+  def asNamespace: MongoNamespace = new MongoNamespace(database.value, collection.value)
 }
 
 object Collection {
@@ -45,16 +73,16 @@ object Collection {
   def fromFile(file: AFile): PathError \/ Collection =
     fromPath(file)
 
-  /** The collection prefix represented by the given directory. */
-  def prefixFromDir(dir: ADir): PathError \/ String =
-    fromPath(dir) map (_.collectionName + ".")
+  /** The name of a collection represented by the given directory. */
+  def prefixFromDir(dir: ADir): PathError \/ CollectionName =
+    fromPath(dir) map (_.collection)
 
   /** Returns the database name determined by the given path. */
-  def dbNameFromPath(path: APath): PathError \/ String =
+  def dbNameFromPath(path: APath): PathError \/ DatabaseName =
     dbNameAndRest(path) bimap (PathError.invalidPath(path, _), _._1)
 
   /** Returns the directory name derived from the given database name. */
-  def dirNameFromDbName(dbName: String): DirName =
+  def dirNameFromDbName(dbName: DatabaseName): DirName =
     DirName(DatabaseNameUnparser(dbName))
 
   private def fromPath(path: APath): PathError \/ Collection = {
@@ -65,8 +93,8 @@ object Collection {
       (db, r) = tpl
       ss   <- r.toNel.toRightDisjunction("path names a database, but no collection")
       segs <- ss.traverse(CollectionSegmentParser(_))
-      coll =  segs.toList mkString "."
-      len  =  utf8length(db) + 1 + utf8length(coll)
+      coll =  CollectionName(segs.toList mkString ".")
+      len  =  utf8length(db.value) + 1 + utf8length(coll.value)
       _    <- if (len > 120)
                 s"database+collection name too long ($len > 120 bytes): $db.$coll".left
               else ().right
@@ -75,7 +103,7 @@ object Collection {
     collResult leftMap (invalidPath(path, _))
   }
 
-  private def dbNameAndRest(path: APath): String \/ (String, IList[String]) =
+  private def dbNameAndRest(path: APath): String \/ (DatabaseName, IList[String]) =
     flatten(None, None, None, Some(_), Some(_), path)
       .toIList.unite.uncons(
         "no database specified".left,
@@ -109,14 +137,14 @@ object Collection {
     "?"  -> "%qmark")
 
   private object DatabaseNameParser extends PathParser {
-    def name: Parser[String] =
-      char.* ^^ { _.mkString }
+    def name: Parser[DatabaseName] =
+      char.* ^^ { cs => DatabaseName(cs.mkString) }
 
     def char: Parser[String] = substitute(DatabaseNameEscapes) | "(?s).".r
 
-    def apply(input: String): String \/ String = parseAll(name, input) match {
-      case Success(name, _) if utf8length(name) > 64 =>
-        s"database name too long (> 64 bytes): $name".left
+    def apply(input: String): String \/ DatabaseName = parseAll(name, input) match {
+      case Success(name, _) if utf8length(name.value) > 64 =>
+        s"database name too long (> 64 bytes): ${name.value}".left
       case Success(name, _) =>
         name.right
       case failure : NoSuccess =>
@@ -129,7 +157,7 @@ object Collection {
 
     def nameChar = substitute(DatabaseNameEscapes.map(_.swap)) | "(?s).".r
 
-    def apply(input: String): String = parseAll(name, input) match {
+    def apply(input: DatabaseName): String = parseAll(name, input.value) match {
       case Success(result, _) => result
       case failure : NoSuccess => scala.sys.error("doesn't happen")
     }
@@ -164,18 +192,18 @@ object Collection {
 
     def segChar = substitute(CollectionNameEscapes.map(_.swap)) | "(?s)[^.]".r
 
-    def apply(input: String): List[String] = parseAll(name, input) match {
+    def apply(input: CollectionName): List[String] = parseAll(name, input.value) match {
       case Success(result, _) => result
       case failure : NoSuccess => scala.sys.error("doesn't happen")
     }
   }
 
   implicit val order: Order[Collection] =
-    Order.orderBy(c => (c.databaseName, c.collectionName))
+    Order.orderBy(c => (c.database.value, c.collection.value))
 
   implicit val renderTree: RenderTree[Collection] =
     new RenderTree[Collection] {
       def render(v: Collection) =
-        Terminal(List("Collection"), Some(v.databaseName + "; " + v.collectionName))
+        Terminal(List("Collection"), Some(v.database.value + "; " + v.collection.value))
     }
 }

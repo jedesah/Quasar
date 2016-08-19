@@ -1,0 +1,2 @@
+- Move some classes outside of method body.
+- Enable -Ybackend:GenBCode to scalac.

@@ -1,6 +1,9 @@
 {
     "name": "count grouped joined tables",
-    "backends": { "mongodb_read_only": "pending" },
+    "backends": {
+        "mongodb_read_only": "pending",
+        "postgresql":        "pending"
+    },
     "data": "../slamengine_commits.data",
     "query": "SELECT p.author.login, COUNT(*)
               FROM `../slamengine_commits` as p INNER JOIN `../slamengine_commits` as c ON p.sha = c.sha

@@ -116,7 +116,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
 
   "Mount Service" should {
     "GET" should {
-      "succeed with correct filesystem path" ! prop { d: ADir =>
+      "succeed with correct filesystem path" >> prop { d: ADir =>
         !hasDot(d) ==> {
           runTest { service =>
             for {
@@ -149,7 +149,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
         }
       }
 
-      "succeed with correct view path" ! prop { f: AFile =>
+      "succeed with correct view path" >> prop { f: AFile =>
         !hasDot(f) ==> {
           runTest { service =>
             val cfg = unsafeViewCfg("select * from zips where pop > :cutoff", "cutoff" -> "1000")
@@ -168,7 +168,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
         }
       }
 
-      "be 404 with missing mount (dir)" ! prop { d: APath =>
+      "be 404 with missing mount (dir)" >> prop { d: APath =>
         runTest { service =>
           for {
             r   <- service(Request(uri = pathUri(d)))
@@ -180,7 +180,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
         }
       }
 
-      "be 404 with path type mismatch" ! prop { fp: AFile =>
+      "be 404 with path type mismatch" >> prop { fp: AFile =>
         runTest { service =>
           val dp = fileParent(fp) </> dir(fileName(fp).value)
 
@@ -201,7 +201,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
 
       def destination(p: pathy.Path[_, _, Sandboxed]) = Header(Destination.name.value, UriPathCodec.printPath(p))
 
-      "succeed with filesystem mount" ! prop { (srcHead: String, srcTail: RDir, dstHead: String, dstTail: RDir) =>
+      "succeed with filesystem mount" >> prop { (srcHead: String, srcTail: RDir, dstHead: String, dstTail: RDir) =>
         // NB: distinct first segments means no possible conflict, but doesn't
         // hit every possible scenario.
         (srcHead != "" && dstHead != "" && srcHead != dstHead && !hasDot(rootDir </> dir(srcHead) </> srcTail)) ==> {
@@ -232,7 +232,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
         }
       }
 
-      "be 404 with missing source" ! prop { (src: ADir, dst: ADir) =>
+      "be 404 with missing source" >> prop { (src: ADir, dst: ADir) =>
         runTest { service =>
           for {
             r   <- service(Request(
@@ -249,7 +249,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
         }
       }
 
-      "be 400 with no specified Destination" ! prop { (src: ADir) =>
+      "be 400 with no specified Destination" >> prop { (src: ADir) =>
         !hasDot(src) ==> {
           runTest { service =>
             for {
@@ -269,7 +269,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
         }
       }
 
-      "be 400 with relative path destination" ! prop { (src: ADir, dst: RDir) =>
+      "be 400 with relative path destination" >> prop { (src: ADir, dst: RDir) =>
         !hasDot(src) ==> {
           runTest { service =>
             for {
@@ -292,7 +292,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
         }
       }
 
-      "be 400 with non-directory path destination" ! prop { (src: ADir, dst: AFile) =>
+      "be 400 with non-directory path destination" >> prop { (src: ADir, dst: AFile) =>
         !hasDot(src) ==> {
           runTest { service =>
             for {
@@ -350,7 +350,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
       }
 
       testBoth { reqBuilder =>
-        "succeed with filesystem path" ! prop { (parent: ADir, fsDir: RDir) =>
+        "succeed with filesystem path" >> prop { (parent: ADir, fsDir: RDir) =>
           !hasDot(parent </> fsDir) ==> {
             runTest { service =>
               for {
@@ -370,7 +370,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
           }
         }
 
-        "succeed with view path" ! prop { (parent: ADir, f: RFile) =>
+        "succeed with view path" >> prop { (parent: ADir, f: RFile) =>
           !hasDot(parent </> f) ==> {
             runTest { service =>
               val (expr, vars) = unsafeViewCfg("select * from zips where pop < :cutoff", "cutoff" -> "1000")
@@ -393,7 +393,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
           }
         }
 
-        "succeed with view under existing fs path" ! prop { (fs: ADir, viewSuffix: RFile) =>
+        "succeed with view under existing fs path" >> prop { (fs: ADir, viewSuffix: RFile) =>
           !hasDot(fs </> viewSuffix) ==> {
             runTest { service =>
               val (expr, vars) = unsafeViewCfg("select * from zips where pop < :cutoff", "cutoff" -> "1000")
@@ -425,7 +425,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
           }
         }
 
-        "succeed with view 'above' existing fs path" ! prop { (d: ADir, view: RFile, fsSuffix: RDir) =>
+        "succeed with view 'above' existing fs path" >> prop { (d: ADir, view: RFile, fsSuffix: RDir) =>
           !hasDot(d </> view) ==> {
             runTest { service =>
               val (expr, vars) = unsafeViewCfg("select * from zips where pop < :cutoff", "cutoff" -> "1000")
@@ -455,7 +455,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
           }
         }
 
-        "be 409 with fs above existing fs path" ! prop { (d: ADir, fs: RDir, fsSuffix: RDir) =>
+        "be 409 with fs above existing fs path" >> prop { (d: ADir, fs: RDir, fsSuffix: RDir) =>
           (!identicalPath(fsSuffix, currentDir)) ==> {
             runTest { service =>
               val cfgStr = EncodeJson.of[MountConfig].encode(MountConfig.fileSystemConfig(StubFs, fooUri))
@@ -480,7 +480,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
           }
         }.pendingUntilFixed("test harness does not yet detect conflicts")
 
-        "be 400 with fs config and file path in X-File-Name header" ! prop { (parent: ADir, fsFile: RFile) =>
+        "be 400 with fs config and file path in X-File-Name header" >> prop { (parent: ADir, fsFile: RFile) =>
           runTest { service =>
             for {
               req <- reqBuilder(parent, fsFile, """{ "stub": { "connectionUri": "foo" } }""")
@@ -496,7 +496,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
           }
         }
 
-        "be 400 with view config and dir path in X-File-Name header" ! prop { (parent: ADir, viewDir: RDir) =>
+        "be 400 with view config and dir path in X-File-Name header" >> prop { (parent: ADir, viewDir: RDir) =>
           runTest { service =>
             val cfg = unsafeViewCfg("select * from zips where pop < :cutoff", "cutoff" -> "1000")
             val cfgStr = EncodeJson.of[MountConfig].encode(MountConfig.viewConfig(cfg))
@@ -515,7 +515,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
           }
         }
 
-        "be 400 with invalid JSON" ! prop { (parent: ADir, f: RFile) =>
+        "be 400 with invalid JSON" >> prop { (parent: ADir, f: RFile) =>
           !hasDot(parent </> f) ==> {
             runTest { service =>
               for {
@@ -531,7 +531,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
           }
         }
 
-        "be 400 with invalid connection uri" ! prop { (parent: ADir, d: RDir) =>
+        "be 400 with invalid connection uri" >> prop { (parent: ADir, d: RDir) =>
           !hasDot(parent </> d) ==> {
             runTest { service =>
               for {
@@ -547,7 +547,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
           }
         }
 
-        "be 400 with invalid view URI" ! prop { (parent: ADir, f: RFile) =>
+        "be 400 with invalid view URI" >> prop { (parent: ADir, f: RFile) =>
           !hasDot(parent </> f) ==> {
             runTest { service =>
               for {
@@ -568,7 +568,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
     "POST" should {
       import org.http4s.Method.POST
 
-      "be 409 with existing filesystem path" ! prop { (parent: ADir, fsDir: RDir) =>
+      "be 409 with existing filesystem path" >> prop { (parent: ADir, fsDir: RDir) =>
         runTest { service =>
           val mntPath = parent </> fsDir
 
@@ -594,7 +594,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
         }
       }
 
-      "be 400 with missing X-File-Name header" ! prop { (parent: ADir) =>
+      "be 400 with missing X-File-Name header" >> prop { (parent: ADir) =>
         !hasDot(parent) ==> {
           runTest { service =>
             for {
@@ -617,7 +617,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
     "PUT" should {
       import org.http4s.Method.PUT
 
-      "succeed with overwritten filesystem" ! prop { (fsDir: ADir) =>
+      "succeed with overwritten filesystem" >> prop { (fsDir: ADir) =>
         !hasDot(fsDir) ==> {
           runTest { service =>
             for {
@@ -647,7 +647,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
     "DELETE" should {
       import org.http4s.Method.DELETE
 
-      "succeed with filesystem path" ! prop { (d: ADir) =>
+      "succeed with filesystem path" >> prop { (d: ADir) =>
         !hasDot(d) ==> {
           runTest { service =>
             for {
@@ -670,7 +670,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
         }
       }
 
-      "succeed with view path" ! prop { (f: AFile) =>
+      "succeed with view path" >> prop { (f: AFile) =>
         !hasDot(f) ==> {
           runTest { service =>
             val cfg = unsafeViewCfg("select * from zips where pop > :cutoff", "cutoff" -> "1000")
@@ -695,7 +695,7 @@ class MountServiceSpec extends quasar.QuasarSpecification with ScalaCheck with H
         }
       }
 
-      "be 404 with missing path" ! prop { p: APath =>
+      "be 404 with missing path" >> prop { p: APath =>
         runTest { service =>
           for {
             r   <- service(Request(method = DELETE, uri = pathUri(p)))

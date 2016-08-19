@@ -16,23 +16,34 @@
 
 package quasar.physical.marklogic
 
-import quasar.effect.{Failure, Read}
+import quasar.Predef._
 
-import com.marklogic.xcc.Session
-import scalaz.:<:
+import com.marklogic.xcc.exceptions.XccException
+import scalaz._, Scalaz._
 
 package object xcc {
-  type SessionR[A] = Read[Session, A]
+  def attemptXcc[F[_], A](fa: F[A])(implicit FM: Monad[F], FC: Catchable[F]): F[XccException \/ A] =
+    FM.bind(FC.attempt(fa)) {
+      case -\/(xe: XccException) => FM.point(xe.left)
+      case -\/(t)                => FC.fail(t)
+      case \/-(a)                => FM.point(a.right)
+    }
 
-  object SessionR {
-    def Ops[S[_]](implicit S: SessionR :<: S) =
-      Read.Ops[Session, S]
-  }
+  def handleXcc[F[_]: Monad: Catchable, A, B >: A](
+    fa: F[A])(
+    pf: PartialFunction[XccException, B]
+  ): F[B] =
+    handleXccWith[F, A, B](fa)(pf andThen (_.point[F]))
 
-  type XccFailure[A] = Failure[XccError, A]
-
-  object XccFailure {
-    def Ops[S[_]](implicit S: XccFailure :<: S) =
-      Failure.Ops[XccError, S]
-  }
+  def handleXccWith[F[_], A, B >: A](
+    fa: F[A])(
+    pf: PartialFunction[XccException, F[B]]
+  )(implicit
+    FM: Monad[F],
+    FC: Catchable[F]
+  ): F[B] =
+    FM.bind(attemptXcc(fa)) {
+      case -\/(e) => pf.lift(e) getOrElse FC.fail(e)
+      case \/-(a) => FM.point[B](a)
+    }
 }

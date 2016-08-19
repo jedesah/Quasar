@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
-package quasar.physical.sparkcore.fs
+package quasar.physical.sparkcore.fs.local
 
 import quasar.Predef._
 import quasar.fs._
 import quasar.fp.free._
 import quasar.effect.Read
+import quasar.physical.sparkcore.fs.Input
 
 import java.io.File
 
@@ -29,7 +30,7 @@ import pathy.Path.posixCodec
 import scalaz._
 import scalaz.concurrent.Task
 
-object local_readfile {
+object readfile {
 
   def rddFrom[S[_]](f: AFile)(implicit read: Read.Ops[SparkContext, S]): Free[S, RDD[String]] =
     read.asks(sc => sc.textFile(posixCodec.unsafePrintPath(f)))

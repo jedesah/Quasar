@@ -205,6 +205,8 @@ object Data {
 
   implicit val dataShow: Show[Data] = Show.showFromToString
 
+  implicit val dataEqual: Equal[Data] = Equal.equalA
+
   object EJsonType {
     def apply(typ: String): Data =
       Data.Obj(ListMap("_ejson.type" -> Data.Str(typ)))

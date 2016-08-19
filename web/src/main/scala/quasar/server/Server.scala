@@ -41,6 +41,8 @@ import scalaz.syntax.std.option._
 import scalaz.concurrent.Task
 
 object Server {
+  type ServiceStarter = (Int => Task[Unit]) => HttpService
+
   final case class QuasarConfig(
     staticContent: List[StaticContent],
     redirect: Option[String],
@@ -107,7 +109,7 @@ object Server {
     staticContent: List[StaticContent],
     redirect: Option[String],
     eval: CoreEff ~> ResponseOr
-  ): (Int => Task[Unit]) => HttpService = {
+  ): ServiceStarter = {
     import RestApi._
 
     (reload: Int => Task[Unit]) =>
@@ -122,7 +124,7 @@ object Server {
     webConfig: WebConfig)(
     implicit
     ev1: ConfigOps[WebConfig]
-  ): MainTask[(Int => Task[Unit]) => HttpService] =
+  ): MainTask[ServiceStarter] =
     for {
       cfgRef       <- TaskRef(webConfig).liftM[MainErrT]
       hfsRef       <- TaskRef(Empty.fileSystem[HierarchicalFsEffM]).liftM[MainErrT]
@@ -150,19 +152,19 @@ object Server {
       qConfig.redirect,
       coreApi)
 
-  def main(args: Array[String]): Unit = {
-    implicit val configOps = ConfigOps[WebConfig]
-
-    val main0 = for {
+  def launchServer(args: Array[String], builder: (QuasarConfig, WebConfig) => MainTask[ServiceStarter])(implicit configOps: ConfigOps[WebConfig]): Task[Unit] =
+    logErrors(for {
       qCfg    <- QuasarConfig.fromArgs(args)
       wCfg    <- loadConfigFile[WebConfig](qCfg.configPath).liftM[MainErrT]
                  // TODO: Find better way to do this
       updWCfg =  wCfg.copy(server = wCfg.server.copy(qCfg.port.getOrElse(wCfg.server.port)))
-      srvc    <- durableService(qCfg, updWCfg)
+      srvc    <- builder(qCfg, updWCfg)
       _       <- Http4sUtils.startAndWait(updWCfg.server.port, srvc, qCfg.openClient).liftM[MainErrT]
-    } yield ()
+    } yield ())
 
-    logErrors(main0).unsafePerformSync
+  def main(args: Array[String]): Unit = {
+    implicit val configOps = ConfigOps[WebConfig]
+
+    launchServer(args, durableService(_, _)).unsafePerformSync
   }
-
 }

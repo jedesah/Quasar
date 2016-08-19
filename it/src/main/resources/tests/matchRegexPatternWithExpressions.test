@@ -1,6 +1,10 @@
 {
   "name": "regexes in expressions and filter, with fields and constants providing the pattern",
-  "backends": { "mongodb_read_only": "pending" },
+
+  "backends": {
+    "mongodb_read_only": "pending",
+    "postgresql":        "pending"
+  },
 
   "data": "largeZips.data",
 

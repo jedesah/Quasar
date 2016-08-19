@@ -29,7 +29,7 @@ import simulacrum.typeclass
 
   def normalizeMapFunc[T[_[_]]: Recursive: Corecursive: EqualT, A](fm: Free[MapFunc[T, ?], A]):
       Free[MapFunc[T, ?], A] =
-    freeTransCata[T, MapFunc[T, ?], A](fm)(repeatedly(MapFunc.normalize))
+    freeTransCata[T, MapFunc[T, ?], MapFunc[T, ?], A, A](fm)(repeatedly(MapFunc.normalize))
 }
 
 trait NormalizableInstances {

@@ -21,7 +21,7 @@ import quasar.RenderTree.ops._
 
 import java.lang.NumberFormatException
 
-import matryoshka._, Recursive.ops._, FunctorT.ops._
+import matryoshka._, Recursive.ops._, FunctorT.ops._, TraverseT.nonInheritedOps._
 import matryoshka.patterns._
 import monocle.Lens
 import scalaz.{Lens => _, _}, Liskov._, Scalaz._
@@ -642,6 +642,12 @@ package object fp
       self.ana(CoEnv.freeIso[E, F].reverseGet)
   }
 
+  // TODO[matryoshka]: Should be an HTraverse instance
+  def coEnvHtraverse[G[_]: Applicative, F[_], H[_], A, B](
+    fa: CoEnv[A, F, B])(
+    f: F ~> (G ∘ H)#λ) =
+    fa.run.traverse(f(_)).map(CoEnv(_))
+
   implicit final class CoEnvOps[T[_[_]], F[_], E](val self: T[CoEnv[E, F, ?]]) extends scala.AnyVal {
     final def fromCoEnv(implicit fa: Functor[F], tr: Recursive[T]): Free[F, E] =
       self.cata(CoEnv.freeIso[E, F].get)
@@ -649,11 +655,17 @@ package object fp
 
   /** Applies a transformation over `Free`, treating it like `T[CoEnv]`.
     */
-  def freeTransCata[T[_[_]]: Recursive: Corecursive, F[_]: Functor, A](
+  def freeTransCata[T[_[_]]: Recursive: Corecursive, F[_]: Functor, G[_]: Functor, A, B](
     free: Free[F, A])(
-    f: CoEnv[A, F, T[CoEnv[A, F, ?]]] => CoEnv[A, F, T[CoEnv[A, F, ?]]]):
-      Free[F, A] =
-    free.toCoEnv[T].transCata[CoEnv[A, F, ?]](f).fromCoEnv
+    f: CoEnv[A, F, T[CoEnv[B, G, ?]]] => CoEnv[B, G, T[CoEnv[B, G, ?]]]):
+      Free[G, B] =
+    free.toCoEnv[T].transCata[CoEnv[B, G, ?]](f).fromCoEnv
+
+  def freeTransCataM[T[_[_]]: Recursive: Corecursive, M[_]: Monad, F[_]: Traverse, G[_]: Functor, A, B](
+    free: Free[F, A])(
+    f: CoEnv[A, F, T[CoEnv[B, G, ?]]] => M[CoEnv[B, G, T[CoEnv[B, G, ?]]]]):
+      M[Free[G, B]] =
+    free.toCoEnv[T].transCataM[M, CoEnv[B, G, ?]](f) ∘ (_.fromCoEnv)
 
   def liftCo[T[_[_]], F[_], A](f: F[T[CoEnv[A, F, ?]]] => CoEnv[A, F, T[CoEnv[A, F, ?]]]):
       CoEnv[A, F, T[CoEnv[A, F, ?]]] => CoEnv[A, F, T[CoEnv[A, F, ?]]] =

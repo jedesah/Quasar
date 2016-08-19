@@ -1,6 +1,8 @@
 {
   "name": "implicitly grouped, with filtering",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "zips.data",
 
   "query": "select avg(pop), sum(pop) from zips where city = \"BOULDER\" and state = \"CO\"",

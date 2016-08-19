@@ -19,8 +19,7 @@ package quasar.physical.mongodb
 import quasar.Predef._
 import quasar.fp._
 import quasar.physical.mongodb.expression._
-import quasar.physical.mongodb.IdHandling._
-import quasar.physical.mongodb.Workflow._
+import quasar.physical.mongodb.workflow._
 
 import matryoshka._
 import scalaz._, Scalaz._
@@ -80,12 +79,12 @@ package object workflowtask {
                   ExcludeId).pipeline)))
 
         case None =>
-          (Workflow.ExprVar,
+          (ExprVar,
             PipelineTask(
               src,
               pipeline :+
                 PipelineOp($ProjectF((),
-                  Reshape(ListMap(Workflow.ExprName -> $var(base).right)),
+                  Reshape(ListMap(ExprName -> $var(base).right)),
                   ExcludeId).pipeline)))
       }
     case _ => (base, task)
@@ -94,14 +93,16 @@ package object workflowtask {
   private def shape(p: Pipeline): Option[List[BsonField.Name]] = {
     def src = shape(p.dropRight(1))
 
-    p.lastOption.flatMap(_.op.run match {
-      case \/-(IsShapePreserving(_))                    => src
+    p.lastOption.flatMap(_.op match {
+      case IsShapePreserving(_)                    => src
 
-      case \/-($ProjectF((), Reshape(shape), _))         => Some(shape.keys.toList)
-      case \/-($GroupF((), Grouped(shape), _))           => Some(shape.keys.toList)
-      case \/-($UnwindF((), _))                          => src
-      case \/-($RedactF((), _))                          => None
-      case \/-($GeoNearF((), _, _, _, _, _, _, _, _, _)) => src.map(_ :+ BsonField.Name("dist"))
+      case $project((), Reshape(shape), _)         => Some(shape.keys.toList)
+      case $group((), Grouped(shape), _)           => Some(shape.keys.toList)
+      case $unwind((), _)                          => src
+      case $redact((), _)                          => None
+      case $geoNear((), _, _, _, _, _, _, _, _, _) => src.map(_ :+ BsonField.Name("dist"))
+
+      case $lookup((), _, _, _, as)                => src.map(_ :+ as)
     })
   }
 }

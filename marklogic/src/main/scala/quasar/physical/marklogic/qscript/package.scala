@@ -17,6 +17,7 @@
 package quasar.physical.marklogic
 
 import quasar.qscript._
+import quasar.physical.marklogic.xquery.XQuery
 
 import scalaz.Const
 

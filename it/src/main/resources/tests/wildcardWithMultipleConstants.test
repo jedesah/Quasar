@@ -1,6 +1,8 @@
 {
     "name": "splice a wildcard with multiple constants",
 
+    "backends": { "postgresql": "pending" },
+
     "data": "largeZips.data",
 
     "query": "select *, '1', '2' from largeZips",

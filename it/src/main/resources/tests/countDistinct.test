@@ -1,6 +1,8 @@
 {
   "name": "count distinct",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "olympics.data",
 
   "query": "select count(distinct sport) from olympics",

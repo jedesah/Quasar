@@ -50,6 +50,9 @@ object TestConfig {
   lazy val backendNames: List[BackendName] =
     List(MONGO_2_6, MONGO_3_0, MONGO_3_2, MONGO_READ_ONLY, SKELETON, POSTGRESQL, MARKLOGIC)
 
+  final case class UnsupportedFileSystemConfig(c: MountConfig)
+    extends RuntimeException(s"Unsupported filesystem config: $c")
+
   /** True if this backend configuration is for a mongo connection where the
     * user has the "read-only" role.
     */
@@ -80,7 +83,7 @@ object TestConfig {
       TestConfig.loadConfig(envName) flatMapF (c =>
         pf.lift((c, p)).cata(
           Task.delay(_),
-          Task.fail(new RuntimeException(s"Unsupported filesystem config: $c"))))
+          Task.fail(new UnsupportedFileSystemConfig(c))))
 
     def fileSystemNamed(n: BackendName, p: ADir): OptionT[Task, FileSystemUT[S]] = {
       def rsrc(connect: Task[(S ~> Task, Task[Unit])]): Task[TaskResource[(S ~> Task, Task[Unit])]] =

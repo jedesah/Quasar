@@ -1,6 +1,8 @@
 {
   "name": "select _id as zip",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "zips.data",
 
   "query": "select _id as zip from zips where city = \"BOULDER\" and state = \"CO\"",

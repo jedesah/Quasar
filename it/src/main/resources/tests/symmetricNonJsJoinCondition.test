@@ -1,6 +1,9 @@
 {
     "name": "flattening both sides of a join condition",
-    "backends": { "mongodb_read_only": "pending" },
+    "backends": {
+        "mongodb_read_only": "pending",
+        "postgresql":        "pending"
+    },
     "data": "zips.data",
     "query": "select z1.city as city1, z1.loc as loc1, z2.city as city2, z2.loc as loc2 from zips as z1 join largeZips as z2 on z1.loc[*] = z2.loc[*] where z1.city < z2.city",
     "predicate": "containsExactly",

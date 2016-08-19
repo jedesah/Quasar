@@ -35,8 +35,7 @@ private[mongodb] final class JavaScriptWorkflowExecutor
   extends WorkflowExecutor[JavaScriptLog, Unit] {
 
   import JavaScriptWorkflowExecutor._
-  import MapReduce.OutputCollection
-  import Workflow.$SortF
+  import quasar.physical.mongodb.workflow.$SortF
 
   type ExprS[A] = State[Expr, A]
 
@@ -97,7 +96,7 @@ private[mongodb] final class JavaScriptWorkflowExecutor
       Select(toJsRef(dst), "insert"),
       List(AnonElem(values map (_.toJs)))))
 
-  protected def mapReduce(src: Collection, dst: OutputCollection, mr: MapReduce) =
+  protected def mapReduce(src: Collection, dst: MapReduce.OutputCollection, mr: MapReduce) =
     tell(Call(
       Select(toJsRef(src), "mapReduce"),
       List(mr.map, mr.reduce, mr.toCollBson(dst).toJs)))
@@ -114,11 +113,11 @@ private[mongodb] object JavaScriptWorkflowExecutor {
   val SimpleCollectionNamePattern =
     "[a-zA-Z][_a-zA-Z0-9]*(?:\\.[a-zA-Z][_a-zA-Z0-9]*)*".r
 
-  def toJsRef(col: Collection) = col.collectionName match {
-    case SimpleCollectionNamePattern() =>
-      Select(Ident("db"), col.collectionName)
+  def toJsRef(col: Collection) = col.collection.value match {
+    case name @ SimpleCollectionNamePattern() =>
+      Select(Ident("db"), name)
 
-    case _ =>
-      Call(Select(Ident("db"), "getCollection"), List(Str(col.collectionName)))
+    case name =>
+      Call(Select(Ident("db"), "getCollection"), List(Str(name)))
   }
 }

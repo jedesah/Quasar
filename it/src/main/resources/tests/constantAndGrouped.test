@@ -1,6 +1,8 @@
 {
   "name": "constant and a grouped value",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "zips.data",
 
   "variables": {

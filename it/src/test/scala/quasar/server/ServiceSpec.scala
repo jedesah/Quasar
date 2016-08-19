@@ -58,8 +58,11 @@ class ServiceSpec extends quasar.QuasarSpecification {
 
     (for {
       svc           <- service
-      (_, shutdown) <- Http4sUtils.startServers(port, svc).liftM[MainErrT]
-      r             <- f(uri).onFinish(_ => shutdown).liftM[MainErrT]
+      (p, shutdown) <- Http4sUtils.startServers(port, svc).liftM[MainErrT]
+      r             <- f(uri)
+                          .onFinish(_ => shutdown)
+                          .onFinish(_ => p.run)
+                          .liftM[MainErrT]
     } yield r).run.unsafePerformSync
   }
 
@@ -242,5 +245,7 @@ class ServiceSpec extends quasar.QuasarSpecification {
     }
 
   }
+
+  step(client.shutdown.unsafePerformSync)
 
 }

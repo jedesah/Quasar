@@ -1,6 +1,8 @@
 {
   "name": "dow and isodow",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "../days.data",
 
   "query": "select day, date_part(\"dow\", ts) as dow, date_part(\"isodow\", ts) as isodow from `../days`",

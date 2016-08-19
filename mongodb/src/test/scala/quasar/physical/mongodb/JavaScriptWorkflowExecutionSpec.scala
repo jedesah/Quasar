@@ -20,6 +20,7 @@ import quasar.Predef._
 import quasar.javascript._
 import quasar.physical.mongodb.accumulator._
 import quasar.physical.mongodb.expression._
+import quasar.physical.mongodb.workflow._
 import quasar.qscript._
 
 import scala.collection.immutable.ListMap
@@ -29,7 +30,7 @@ import scalaz.syntax.either._
 import org.specs2.scalaz._
 
 class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with DisjunctionMatchers {
-  import Workflow._
+  import CollectionUtil._
 
   def toJS(wf: Workflow): WorkflowExecutionError \/ String =
     WorkflowExecutor.toJS(Crystallize[WorkflowF].crystallize(wf))
@@ -37,13 +38,13 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
   "Executing 'Workflow' as JavaScript" should {
 
     "write trivial workflow to JS" in {
-      val wf = $read[WorkflowF](Collection("db", "zips"))
+      val wf = $read[WorkflowF](collection("db", "zips"))
 
       toJS(wf) must beRightDisjunction("db.zips.find();\n")
     }
 
     "write trivial workflow to JS with fancy collection name" in {
-      val wf = $read[WorkflowF](Collection("db", "tmp.123"))
+      val wf = $read[WorkflowF](collection("db", "tmp.123"))
 
       toJS(wf) must beRightDisjunction("db.getCollection(\"tmp.123\").find();\n")
     }
@@ -58,7 +59,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write simple query to JS" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips")),
+        $read[WorkflowF](collection("db", "zips")),
         $match[WorkflowF](Selector.Doc(
           BsonField.Name("pop") -> Selector.Gte(Bson.Int64(1000)))))
 
@@ -69,7 +70,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write limit to JS" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips")),
+        $read[WorkflowF](collection("db", "zips")),
         $limit[WorkflowF](10))
 
       toJS(wf) must beRightDisjunction(
@@ -79,12 +80,12 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write project and limit to JS" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips")),
+        $read[WorkflowF](collection("db", "zips")),
         $limit[WorkflowF](10),
         $project[WorkflowF](
           Reshape(ListMap(
             BsonField.Name("city") -> $include().right)),
-          IdHandling.ExcludeId))
+          ExcludeId))
 
       toJS(wf) must beRightDisjunction(
         """db.zips.find({ "city": true, "_id": false }).limit(10);
@@ -93,14 +94,14 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write filter, project, and limit to JS" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips")),
+        $read[WorkflowF](collection("db", "zips")),
         $match[WorkflowF](Selector.Doc(
           BsonField.Name("pop") -> Selector.Lt(Bson.Int64(1000)))),
         $limit[WorkflowF](10),
         $project[WorkflowF](
           Reshape(ListMap(
             BsonField.Name("city") -> $include().right)),
-          IdHandling.ExcludeId))
+          ExcludeId))
 
       toJS(wf) must beRightDisjunction(
         """db.zips.find(
@@ -112,7 +113,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write simple count to JS" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips")),
+        $read[WorkflowF](collection("db", "zips")),
         $match[WorkflowF](Selector.Doc(
           BsonField.Name("pop") -> Selector.Gte(Bson.Int64(1000)))),
         $group[WorkflowF](
@@ -127,7 +128,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write simple distinct to JS" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips")),
+        $read[WorkflowF](collection("db", "zips")),
         $group[WorkflowF](
           Grouped(ListMap()),
           Reshape(ListMap(
@@ -135,7 +136,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
         $project[WorkflowF](
           Reshape(ListMap(
             BsonField.Name("c") -> $field("_id", "0").right)),
-          IdHandling.ExcludeId))
+          ExcludeId))
 
       toJS(wf) must beRightDisjunction(
         """db.zips.distinct("city").map(function (elem) { return { "c": elem } });
@@ -144,7 +145,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write filtered distinct to JS" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips")),
+        $read[WorkflowF](collection("db", "zips")),
         $match[WorkflowF](Selector.Doc(
           BsonField.Name("pop") -> Selector.Gte(Bson.Int64(1000)))),
         $group[WorkflowF](
@@ -154,7 +155,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
         $project[WorkflowF](
           Reshape(ListMap(
             BsonField.Name("c") -> $field("_id", "0").right)),
-          IdHandling.ExcludeId))
+          ExcludeId))
 
       toJS(wf) must beRightDisjunction(
         """db.zips.distinct("city").filter({ "pop": { "$gte": NumberLong("1000") } }).map(
@@ -164,7 +165,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write simple pipeline workflow to JS" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips")),
+        $read[WorkflowF](collection("db", "zips")),
         $match[WorkflowF](Selector.Doc(
           BsonField.Name("pop") -> Selector.Gte(Bson.Int64(1000)))))
 
@@ -175,7 +176,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write chained pipeline workflow to JS find()" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips")),
+        $read[WorkflowF](collection("db", "zips")),
         $match[WorkflowF](Selector.Doc(
           BsonField.Name("pop") -> Selector.Lte(Bson.Int64(1000)))),
         $match[WorkflowF](Selector.Doc(
@@ -195,7 +196,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write chained pipeline workflow to JS" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips")),
+        $read[WorkflowF](collection("db", "zips")),
         $match[WorkflowF](Selector.Doc(
           BsonField.Name("pop") -> Selector.Lte(Bson.Int64(1000)))),
         $match[WorkflowF](Selector.Doc(
@@ -224,7 +225,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write map-reduce Workflow to JS" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips")),
+        $read[WorkflowF](collection("db", "zips")),
         $map[WorkflowF]($MapF.mapKeyVal(("key", "value"),
           Js.Select(Js.Ident("value"), "city"),
           Js.Select(Js.Ident("value"), "pop")),
@@ -251,7 +252,7 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
 
     "write $where condition to JS" in {
       val wf = chain(
-        $read[WorkflowF](Collection("db", "zips2")),
+        $read[WorkflowF](collection("db", "zips2")),
         $match[WorkflowF](Selector.Where(Js.Ident("foo"))))
 
       toJS(wf) must beRightDisjunction(
@@ -273,11 +274,11 @@ class JavaScriptWorkflowExecutionSpec extends quasar.QuasarSpecification with Di
       val wf =
         $foldLeft[WorkflowF](
           chain(
-            $read[WorkflowF](Collection("db", "zips1")),
+            $read[WorkflowF](collection("db", "zips1")),
             $match[WorkflowF](Selector.Doc(
               BsonField.Name("city") -> Selector.Eq(Bson.Text("BOULDER"))))),
           chain(
-            $read[WorkflowF](Collection("db", "zips2")),
+            $read[WorkflowF](collection("db", "zips2")),
             $match[WorkflowF](Selector.Doc(
               BsonField.Name("pop") -> Selector.Lte(Bson.Int64(1000)))),
             $map[WorkflowF]($MapF.mapKeyVal(("key", "value"),

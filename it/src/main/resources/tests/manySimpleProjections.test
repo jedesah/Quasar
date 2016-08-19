@@ -1,6 +1,8 @@
 {
   "name": "many simple projections (order matters)",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "zips.data",
 
   "query": "select city as a, city as b, city as c, city as d, city as e, city as f from zips where _id = \"80301\"",

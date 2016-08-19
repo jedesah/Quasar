@@ -1,5 +1,6 @@
 {
     "name": "unify flattened fields with multiple shape-preserving ops.",
+    "backends": { "postgresql": "pending" },
     "data": "zips.data",
     "query": "select _id as zip, loc[*] from zips where loc[*] > 68 order by loc[*]",
     "predicate": "equalsExactly",

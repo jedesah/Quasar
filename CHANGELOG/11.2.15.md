@@ -1,0 +1,1 @@
+- disable parallel execution of integration tests, which seems to contribute to build instability and doesn't help performance much anyway

@@ -6,6 +6,11 @@ IFS=$'\n\t'       # http://redsymbol.net/articles/unofficial-bash-strict-mode/
 # is not available on Travis' new Docker-based platform.
 # TODO: This won't be necessary when travis switches to 2.6 by default - see https://github.com/travis-ci/travis-ci/issues/2246
 
+if [[ -z ${1+x} ]] || [[ -z ${2+x} ]] || [[ -z ${3+x} ]]; then
+  echo "mongo install params not fully provided, skipping install"
+  exit
+fi
+
 MONGO_VERSION=$1
 MONGO_DIR=$2
 MONGO_PORT=$3

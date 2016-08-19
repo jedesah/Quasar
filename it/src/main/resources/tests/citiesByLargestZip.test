@@ -1,5 +1,6 @@
 {
   "name": "cities with largest individual zip codes",
+  "backends": { "postgresql": "pending" },
   "note": "This is tricky because the sort key does not appear in the result. The
           result can be verified by running a similar query with 'select city, pop'.",
 

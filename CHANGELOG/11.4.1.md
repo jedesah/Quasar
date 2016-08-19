@@ -1,0 +1,2 @@
+- Show all test timings
+- Abort test specification after first failure

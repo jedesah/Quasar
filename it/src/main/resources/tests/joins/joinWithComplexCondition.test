@@ -1,6 +1,9 @@
 {
     "name": "join with complex conditions",
-    "backends": { "mongodb_read_only": "pending" },
+    "backends": {
+        "mongodb_read_only": "pending",
+        "postgresql":        "pending"
+    },
     "data": "../slamengine_commits.data",
     "query": "select l.sha as child, l.author.login as c_auth, r.sha as parent, r.author.login as p_auth
               from `../slamengine_commits` as l join `../slamengine_commits` as r

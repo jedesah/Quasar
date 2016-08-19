@@ -14,20 +14,14 @@
  * limitations under the License.
  */
 
-package quasar.physical
+package quasar
 
-import quasar.Predef.String
-import quasar.effect.Read
-
-import scalaz.:<:
-
-package object marklogic {
-  type XQuery = String
-
-  type ClientR[A] = Read[Client, A]
-
-  object ClientR {
-    def Ops[S[_]](implicit S: ClientR :<: S) =
-      Read.Ops[Client, S]
+class QuasarSpecSpec extends QuasarSpecification {
+  "flaky tests" should {
+    "pass if they pass" in true.flakyTest
+    "be skipped if they fail" in false.flakyTest
+    "be skipped and explain themselves if they can" in {
+      5 must_=== 6
+    }.flakyTest("I'm a flaky test")
   }
 }

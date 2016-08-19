@@ -110,6 +110,11 @@ sealed abstract class ToApiErrorInstances extends ToApiErrorInstances0 {
         apiError(
           InternalServerError withReason "Unknown result handle.",
           "handleId" := id)
+      case ReadFailed(data, reason) =>
+        fromMsg_(
+          InternalServerError withReason "Failed to read data.",
+          s"Failed to read data: $reason."
+        ) :+ ("data" := data)
       case PartialWrite(numFailed) =>
         apiError(
           InternalServerError withReason "Failed to write some values.",

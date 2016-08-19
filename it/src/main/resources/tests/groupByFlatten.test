@@ -1,5 +1,6 @@
 {
     "name": "group by flattened field",
+    "backends": { "postgresql": "pending" },
     "data": "slamengine_commits.data",
     "query": "select substring(parents[*].sha, 0, 1), count(*) from slamengine_commits group by substring(parents[*].sha, 0, 1)",
     "predicate": "containsExactly",

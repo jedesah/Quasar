@@ -1,6 +1,8 @@
 {
     "name": "four different kinds of CASE expressions (switch/match, with and without ELSE)",
 
+    "backends": { "postgresql": "pending" },
+
     "data": "zips.data",
 
     "query": "select distinct

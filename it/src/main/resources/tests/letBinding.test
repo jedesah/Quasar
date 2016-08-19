@@ -1,6 +1,8 @@
 {
     "name": "handle nested let binding and selects",
 
+    "backends": { "postgresql": "pending" },
+
     "data": "zips.data",
 
     "query": "min_pop := 10000;

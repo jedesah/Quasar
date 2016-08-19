@@ -1,6 +1,8 @@
 {
     "name": "handle select in form of let",
 
+    "backends": { "postgresql": "pending" },
+
     "data": "zips.data",
 
     "query": "cityzips := select zips.city, zips.state from zips where zips.state = \"CT\";

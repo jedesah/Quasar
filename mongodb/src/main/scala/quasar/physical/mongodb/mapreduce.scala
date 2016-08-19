@@ -57,13 +57,13 @@ final case class MapReduce(
 
   import MapReduce._
 
+  ////
+
   def inlineBson: Bson.Doc =
     toBson(Bson.Doc(ListMap("inline" -> Bson.Int64(1))))
 
   def toCollBson(dst: OutputCollection): Bson.Doc =
     toBson(dst.bson)
-
-  ////
 
   private def toBson(out: Bson): Bson.Doc = {
     def sortBson(xs: NonEmptyList[(BsonField, SortDir)]): Bson.Doc =
@@ -129,12 +129,12 @@ object MapReduce {
     */
   final case class ActionedOutput(
     action: Action,
-    databaseName: Option[String],
+    database: Option[DatabaseName],
     shardOutputCollection: Option[Boolean]
   ) {
-    def bson(collName: String): Bson.Doc =
-      Bson.Doc(ListMap((Action.bsonFieldName(action) -> Bson.Text(collName)) :: List(
-        databaseName          map ("db"        -> Bson.Text(_)),
+    def bson(coll: CollectionName): Bson.Doc =
+      Bson.Doc(ListMap((Action.bsonFieldName(action) -> coll.bson) :: List(
+        database              map ("db"        -> _.bson),
         shardOutputCollection map ("sharded"   -> Bson.Bool(_)),
         action.nonAtomic      map ("nonAtomic" -> Bson.Bool(_))
       ).unite: _*))
@@ -142,11 +142,11 @@ object MapReduce {
 
   /** Output collection for non-inline map-reduce jobs. */
   final case class OutputCollection(
-    collectionName: String,
+    collection: CollectionName,
     withAction: Option[ActionedOutput]
   ) {
     def bson: Bson =
-      withAction.fold[Bson](Bson.Text(collectionName))(_ bson collectionName)
+      withAction.fold[Bson](collection.bson)(_ bson collection)
   }
 
   val _map       = GenLens[MapReduce](_.map)

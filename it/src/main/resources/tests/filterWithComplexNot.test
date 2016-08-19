@@ -1,6 +1,10 @@
 {
     "name": "filter with complex query involving not",
-    "backends": { "mongodb_read_only": "pending" },
+
+    "backends": {
+        "mongodb_read_only": "pending",
+        "postgresql": "pending"
+    },
 
     "query": "select _id as zip from largeZips
               where not (city not like \"BOULD%\" or state != \"CO\" or (pop between 20000 and 40000 and loc[1] != 40.017235))",

@@ -1,0 +1,2 @@
+- Add eliding for empty array and map concats.
+- Reogranize qscript into Transform and Optimize classes.

@@ -121,8 +121,8 @@ object SourcedPathable {
           case Union(src, l, r) =>
             Union(
               src,
-              freeTransCata(l)(liftCo(opt.applyToFreeQS[QScriptTotal[T, ?], Hole])),
-              freeTransCata(r)(liftCo(opt.applyToFreeQS[QScriptTotal[T, ?], Hole])))
+              freeTransCata(l)(liftCo(opt.applyToFreeQS[QScriptTotal[T, ?]])),
+              freeTransCata(r)(liftCo(opt.applyToFreeQS[QScriptTotal[T, ?]])))
         }
       }
     }

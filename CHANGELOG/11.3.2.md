@@ -1,0 +1,3 @@
+- add missing tests for test infrastructure (TaskResource)
+- improve build stability by running *only* the integration tests in secondary builds
+- run `doc` in a fresh JVM process

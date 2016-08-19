@@ -1,6 +1,8 @@
 {
     "name": "handle let as project of select",
 
+    "backends": { "postgresql": "pending" },
+
     "data": "zips.data",
 
     "query": "select (zips := select * from cars; select * from zips) from zips",

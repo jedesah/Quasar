@@ -53,6 +53,8 @@ object FileSystemError {
     extends FileSystemError
   final case class UnknownWriteHandle private (h: WriteHandle)
     extends FileSystemError
+  final case class ReadFailed private (data: String, reason: String)
+    extends FileSystemError
   final case class PartialWrite private (numFailed: Int)
     extends FileSystemError
   final case class WriteFailed private (data: Data, reason: String)
@@ -85,6 +87,10 @@ object FileSystemError {
     case UnknownWriteHandle(h) => h
   } (UnknownWriteHandle)
 
+  val readFailed = Prism.partial[FileSystemError, (String, String)] {
+    case ReadFailed(d, r) => (d, r)
+  } (ReadFailed.tupled)
+
   val partialWrite = Prism.partial[FileSystemError, Int] {
     case PartialWrite(n) => n
   } (PartialWrite)
@@ -109,6 +115,8 @@ object FileSystemError {
         s"Attempted to read from '${posixCodec.printPath(h.file)}' using an unknown or closed handle: ${h.id}"
       case UnknownWriteHandle(h) =>
         s"Attempted to write to '${posixCodec.printPath(h.file)}' using an unknown or closed handle: ${h.id}"
+      case ReadFailed(d, r) =>
+        s"Failed to read datum: reason='$r', datum=${d.shows}"
       case PartialWrite(n) =>
         s"Failed to write $n data."
       case WriteFailed(d, r) =>

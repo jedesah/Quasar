@@ -76,7 +76,7 @@ private final class QueryFileInterpreter[C](
 
   import QueryFile._
   import Planner.{PlannerError => PPlannerError}
-  import Workflow._
+  import quasar.physical.mongodb.workflow._
   import FileSystemError._, fsops._
   import Recursive.ops._
   import queryfile._
@@ -164,7 +164,7 @@ private final class QueryFileInterpreter[C](
   private type MongoLogWFR[A] = FileSystemErrT[MongoLogWF, A]
 
   private type JsR[A] =
-    WorkflowExecErrT[ReaderT[SeqNameGeneratorT[JavaScriptLog,?],String,?], A]
+    WorkflowExecErrT[ReaderT[SeqNameGeneratorT[JavaScriptLog,?],CollectionPrefix,?], A]
 
   private val queryR =
     MonadReader[MQ, (Option[DefaultDb], TaskRef[EvalState[C]])]
@@ -193,10 +193,10 @@ private final class QueryFileInterpreter[C](
   private def lookupCursor(h: ResultHandle): OptionT[MQ, ResultCursor[C]] =
     OptionT(MongoQuery(resultsL(h).st))
 
-  private def defaultDbName: MQ[Option[String]] =
+  private def defaultDbName: MQ[Option[DatabaseName]] =
     queryR.asks(_._1.map(_.run))
 
-  private def genPrefix: MQ[String] =
+  private def genPrefix: MQ[CollectionPrefix] =
     MongoDbIO.liftTask(NameGenerator.salt)
       .map(salt => s"tmp.gen_${salt}")
       .liftM[QRT]
@@ -204,18 +204,20 @@ private final class QueryFileInterpreter[C](
   private val liftMQ: MQ ~> MongoLogWFR =
     liftMT[MongoLogWF, FileSystemErrT] compose liftMT[MQ, PhaseResultT]
 
-  private def queryContext(lp: Fix[LogicalPlan]): MongoLogWFR[MongoQueryModel] = {
-    val model: List[Int] => MongoQueryModel = {
-      case x :: _      if x > 3  => MongoQueryModel.`3.2`
-      case 3 :: x :: _ if x >= 2 => MongoQueryModel.`3.2`
-      case 3 :: _                => MongoQueryModel.`3.0`
-      case _                     => MongoQueryModel.`2.6`
-    }
+  private def queryContext(lp: Fix[LogicalPlan]): MongoLogWFR[MongoDbPlanner.QueryContext] = {
+    def lift[A](fa: FileSystemErrT[MongoDbIO, A]): MongoLogWFR[A] =
+      EitherT[MongoLogWF, FileSystemError, A](
+        fa.run.liftM[QRT].liftM[PhaseResultT])
 
-    def lift[A](fa: MongoDbIO[A]): MongoLogWFR[A] =
-      EitherT.right(WriterT.put(ReaderT((_: (Option[DefaultDb], TaskRef[EvalState[C]])) => fa))(Vector.empty))
+    def stats: EitherT[MongoDbIO, FileSystemError, Map[Collection, CollectionStatistics]] =
+      for {
+        colls <- EitherT.fromDisjunction[MongoDbIO](collections(lp).leftMap(pathErr(_)))
+        stats <- colls.toList.traverse(c => MongoDbIO.collectionStatistics(c).strengthL(c)).map(Map(_: _*)).liftM[FileSystemErrT]
+      } yield stats
 
-    lift(MongoDbIO.serverVersion.map(model))
+    lift((MongoDbIO.serverVersion.liftM[FileSystemErrT] |@| stats)((vers, stats) =>
+      MongoDbPlanner.QueryContext(
+        MongoQueryModel(vers), stats.get(_))))
   }
 
   private def convertPlanR(lp: Fix[LogicalPlan]): PlanR ~> MongoLogWFR =
@@ -230,7 +232,7 @@ private final class QueryFileInterpreter[C](
   private def handlePlan[A](
     lp: Fix[LogicalPlan],
     log: Crystallized[WorkflowF] => JsR[_],
-    handle: (Crystallized[WorkflowF], String) => WorkflowExecErrT[MQ, A]
+    handle: (Crystallized[WorkflowF], CollectionPrefix) => WorkflowExecErrT[MQ, A]
   ): MongoLogWFR[A] = for {
     _      <- checkPathsExist(lp)
     ctx    <- queryContext(lp)
@@ -252,20 +254,20 @@ private final class QueryFileInterpreter[C](
   private def execWorkflow(
     wf: Crystallized[WorkflowF],
     dst: Collection,
-    tmpPrefix: String
+    tmpPrefix: CollectionPrefix
   ): WorkflowExecErrT[MQ, Collection] =
     EitherT[MQ, WorkflowExecutionError, Collection](
       execMongo.execute(wf, dst).run.run(tmpPrefix).eval(0).liftM[QRT])
 
   private def evalWorkflow(
     wf: Crystallized[WorkflowF],
-    defDb: Option[String],
-    tmpPrefix: String
+    defDb: Option[DatabaseName],
+    tmpPrefix: CollectionPrefix
   ): WorkflowExecErrT[MQ, ResultCursor[C]] =
     EitherT[MQ, WorkflowExecutionError, ResultCursor[C]](
       execMongo.evaluate(wf, defDb).run.run(tmpPrefix).eval(0).liftM[QRT])
 
-  private def writeJsLog(lp: Fix[LogicalPlan], jsr: JsR[_], tmpPrefix: String): MongoLogWFR[Unit] = {
+  private def writeJsLog(lp: Fix[LogicalPlan], jsr: JsR[_], tmpPrefix: CollectionPrefix): MongoLogWFR[Unit] = {
     val (stmts, r) = jsr.run.run(tmpPrefix).eval(0).run
     EitherT(logProgram(stmts) as r.leftMap(wfErrToFsErr(lp))).void
   }
@@ -274,20 +276,20 @@ private final class QueryFileInterpreter[C](
     MonadTell[MongoLogWF, PhaseResults].tell(Vector(
       PhaseResult.Detail("MongoDB", Js.Stmts(prog.toList).pprint(0))))
 
-  private def checkPathsExist(lp: Fix[LogicalPlan]): MongoLogWFR[Unit] = {
-    // Documentation on `QueryFile` guarantees absolute paths, so calling `mkAbsolute`
-    def checkFileExists(f: AFile): MongoFsM[Unit] = for {
-      coll <- EitherT.fromDisjunction[MongoDbIO](Collection.fromFile(f))
-                .leftMap(pathErr(_))
-      _    <- EitherT(MongoDbIO.collectionExists(coll)
-                .map(_ either (()) or pathErr(PathError.pathNotFound(f))))
-    } yield ()
+  private def collections(lp: Fix[LogicalPlan]): PathError \/ Set[Collection] =
+    // NB: documentation on `QueryFile` guarantees absolute paths, so calling `mkAbsolute`
+    LogicalPlan.paths(lp).toList
+      .traverse(file => Collection.fromFile(mkAbsolute(rootDir, file)))
+      .map(_.toSet)
 
+  private def checkPathsExist(lp: Fix[LogicalPlan]): MongoLogWFR[Unit] = {
+    val rez = for {
+      colls <- EitherT.fromDisjunction[MongoDbIO](collections(lp).leftMap(pathErr(_)))
+      _     <- colls.traverse_(c => EitherT(MongoDbIO.collectionExists(c)
+                .map(_ either (()) or pathErr(PathError.pathNotFound(c.asFile)))))
+    } yield ()
     EitherT[MongoLogWF, FileSystemError, Unit](
-      (LogicalPlan.paths(lp)
-        .traverse_(file => checkFileExists(mkAbsolute(rootDir, file))).run
-        .liftM[QRT]: MQ[FileSystemError \/ Unit])
-        .liftM[PhaseResultT])
+      rez.run.liftM[QRT].liftM[PhaseResultT])
   }
 
   private def moreResults(h: ResultHandle): OptionT[MQ, Vector[Data]] = {

@@ -1,5 +1,6 @@
 {
     "name": "flatten array",
+    "backends": { "postgresql": "pending" },
     "data": "zips.data",
     "query": "SELECT loc[*] AS loc FROM zips LIMIT 1",
     "predicate": "containsExactly",

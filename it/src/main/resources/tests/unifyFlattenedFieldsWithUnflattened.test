@@ -1,5 +1,6 @@
 {
     "name": "unify flattened fields with unflattened field",
+    "backends": { "postgresql": "pending" },
     "data": "zips.data",
     "query": "select _id as zip, loc[*] from zips order by loc[*] limit 10",
     "predicate": "containsExactly",

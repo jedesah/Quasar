@@ -1,6 +1,9 @@
 {
     "name": "project index from group",
-    "backends": { "mongodb_read_only": "pending" },
+    "backends": {
+        "mongodb_read_only": "pending",
+        "postgresql":        "pending"
+    },
     "data": "slamengine_commits.data",
     "query": "select parents[0].sha, count(*) as count from slamengine_commits group by parents[0].sha",
     "predicate": "containsAtLeast",

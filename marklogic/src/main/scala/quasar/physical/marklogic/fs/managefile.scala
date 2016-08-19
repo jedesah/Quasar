@@ -17,9 +17,11 @@
 package quasar.physical.marklogic.fs
 
 import quasar.Predef._
-import quasar.effect.{Read, MonotonicSeq}
+import quasar.fp.free.lift
 import quasar.fs._
-import quasar.physical.marklogic.Client
+import quasar.physical.marklogic.xcc.SessionIO
+
+import scala.util.Random
 
 import pathy.Path._
 import scalaz._, Scalaz._
@@ -28,41 +30,38 @@ import scalaz.concurrent.Task
 object managefile {
   import ManageFile._
 
-  def asDir(file: AFile): ADir = fileParent(file) </> dir(fileName(file).value)
+  def interpret[S[_]](implicit S: SessionIO :<: S): ManageFile ~> Free[S, ?] =
+    new (ManageFile ~> Free[S, ?]) {
+      def apply[A](fs: ManageFile[A]) = fs match {
+        case Move(scenario, semantics) => move(scenario, semantics)
+        case Delete(path)              => delete(path)
+        case TempFile(path)            => tempFile(path)
+      }
 
-  def interpret[S[_]](implicit
-    S0: MonotonicSeq :<: S,
-    S1: Read[Client, ?] :<: S,
-    S2: Task :<: S
-  ): ManageFile ~> Free[S, ?] = new (ManageFile ~> Free[S, ?]) {
-    def apply[A](fs: ManageFile[A]) = fs match {
-      case Move(scenario, semantics) => move(scenario, semantics)
-      case Delete(path) => delete(path)
-      case TempFile(path) => tempFile(path)
+      def move(scenario: MoveScenario, semantics: MoveSemantics): Free[S, FileSystemError \/ Unit] =
+        lift(scenario match {
+          case MoveScenario.FileToFile(src, dst) =>
+            ops.moveFile(src, dst).map(_.right[FileSystemError])
+
+          case MoveScenario.DirToDir(src, dst) => ???
+        }).into[S]
+
+      def delete(path: APath): Free[S, FileSystemError \/ Unit] =
+        lift(refineType(path).fold(ops.deleteDir, ops.deleteFile))
+          .into[S]
+          .map(_.right)
+
+      def tempFile(path: APath): Free[S, FileSystemError \/ AFile] =
+        tempName map { fname =>
+          refineType(path).fold(
+            d => d </> file(fname),
+            f => fileParent(f) </> file(fname)
+          ).right
+        }
+
+      val tempName: Free[S, String] =
+        lift(SessionIO.liftT(
+          Task.delay("temp-" + Random.alphanumeric.take(10).mkString)
+        )).into[S]
     }
-  }
-
-  def move[S[_]](scenario: MoveScenario, semantics: MoveSemantics)(implicit
-    S0: Read[Client, ?] :<: S,
-    S1: Task :<: S
-  ): Free[S, FileSystemError \/ Unit] = scenario match {
-    case MoveScenario.FileToFile(src, dst) =>
-      Client.moveDocuments(asDir(src), asDir(dst)).map(_.right)
-    case MoveScenario.DirToDir(src, dst) => ???
-  }
-
-  def delete[S[_]](path: APath)(implicit
-    S0: Read[Client, ?] :<: S,
-    S1: Task :<: S
-  ): Free[S, FileSystemError \/ Unit] = refineType(path).fold(
-    dir  => Client.deleteStructure(dir).map(_.right),
-    file => Client.deleteContent(asDir(file)).map(_.right))
-
-  def tempFile[S[_]](path: APath)(implicit
-    S0: Read[Client, ?] :<: S
-  ): Free[S, FileSystemError \/ AFile] = refineType(path).fold(
-                                 // TODO: Make pure
-    dir => dir </> file("temp" + scala.util.Random.nextString(10)),
-    file => file).right.pure[Free[S, ?]]
-
 }

@@ -1,6 +1,8 @@
 {
     "name": "filter, sort, and limit",
 
+    "backends": { "postgresql": "pending" },
+
     "data": "zips.data",
 
     "query": "select * from zips where city like \"BOU%\" order by pop limit 10",

@@ -1,6 +1,8 @@
 {
   "name": "explicitly grouped, with only reduced projections, and a filter",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "zips.data",
 
   "query": "select count(*) from zips where pop < 5 group by pop",

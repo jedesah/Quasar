@@ -17,7 +17,7 @@
 package quasar.physical.marklogic.qscript
 
 import quasar.Predef._
-import quasar.physical.marklogic.XQuery
+import quasar.physical.marklogic.xquery.XQuery
 import quasar.qscript.{MapFunc, MapFuncs}, MapFuncs._
 
 import matryoshka.Algebra

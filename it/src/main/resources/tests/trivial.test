@@ -1,6 +1,8 @@
 {
   "name": "simple read",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "smallZips.data",
 
   "query": "select * from smallZips",

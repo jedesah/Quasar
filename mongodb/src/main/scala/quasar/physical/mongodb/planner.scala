@@ -23,11 +23,11 @@ import quasar.fs.mkAbsolute
 import quasar.javascript._
 import quasar.jscore, jscore.{JsCore, JsFn}
 import quasar.namegen._
+import quasar.physical.mongodb.javascript._
+import quasar.physical.mongodb.workflow._
 import quasar.qscript._
 import quasar.std.StdLib._
-import Type._
-import Workflow._
-import javascript._
+import quasar.Type._
 
 import matryoshka._, Recursive.ops._, TraverseT.ops._
 import org.threeten.bp.Instant
@@ -602,6 +602,7 @@ object MongoDbPlanner {
   }
 
   def workflowƒ[F[_]: Functor: Coalesce: Crush: Crystallize]
+    (joinHandler: JoinHandler[F, WorkflowBuilder.M])
     (implicit I: WorkflowOpCoreF :<: F, ev: Show[WorkflowBuilder[F]], WB: WorkflowBuilder.Ops[F])  // FIXME: don't need first two?
     : LogicalPlan[
         Cofree[LogicalPlan, (
@@ -780,7 +781,10 @@ object MongoDbPlanner {
                     HasWorkflow(right) |@|
                     leftKeys.traverse(HasWorkflow) |@|
                     rightKeys.traverse(HasWorkflow))((l, r, lk, rk) =>
-                    join(l, r, func, lk, makeKeys(leftKeys, comp), rk, makeKeys(rightKeys, comp)))).join
+                    joinHandler.run(
+                      func.asInstanceOf[TernaryFunc],
+                      JoinSource(l, lk, makeKeys(leftKeys, comp)),
+                      JoinSource(r, rk, makeKeys(rightKeys, comp))))).join
                 })
           }
         case GroupBy =>
@@ -1093,7 +1097,9 @@ object MongoDbPlanner {
     }
   }
 
-  def plan0[F[_]: Functor: Coalesce: Crush: Crystallize](logical: Fix[LogicalPlan])
+  def plan0[F[_]: Functor: Coalesce: Crush: Crystallize]
+      (joinHandler: JoinHandler[F, WorkflowBuilder.M])
+      (logical: Fix[LogicalPlan])
       (implicit ev0: WorkflowOpCoreF :<: F, ev1: Show[Fix[WorkflowBuilderF[F, ?]]], ev2: RenderTree[Fix[F]])
       : EitherT[Writer[PhaseResults, ?], PlannerError, Crystallized[F]] = {
     // TODO[scalaz]: Shadow the scalaz.Monad.monadMTMAB SI-2712 workaround
@@ -1120,7 +1126,7 @@ object MongoDbPlanner {
     def liftError[A](ea: PlannerError \/ A): M[A] =
       EitherT(ea.point[W]).liftM[GenT]
 
-    val wfƒ = workflowƒ[F] ⋙ (_ ∘ (_ ∘ (_ ∘ normalize[F])))
+    val wfƒ = workflowƒ[F](joinHandler) ⋙ (_ ∘ (_ ∘ (_ ∘ normalize[F])))
 
     (for {
       cleaned <- log("Logical Plan (reduced typechecks)")(liftError(logical.cataM[PlannerError \/ ?, Fix[LogicalPlan]](Optimizer.assumeReadObjƒ)))
@@ -1132,23 +1138,34 @@ object MongoDbPlanner {
     } yield wf2).evalZero
   }
 
+  final case class QueryContext(
+    model: MongoQueryModel,
+    statistics: Collection => Option[CollectionStatistics])
+
   /** Translate the high-level "logical" plan to an executable MongoDB "physical"
     * plan, taking into account the current runtime environment as captured by
-    * the given context (which is for the time being just the "query model"
-    * associated with the backend version.)
+    * the given context.
     * Internally, the type of the plan being built constrains which operators
     * can be used, but the resulting plan uses the largest, common type so that
     * callers don't need to worry about it.
     */
-  def plan(logical: Fix[LogicalPlan], queryContext: MongoQueryModel)
+  def plan(logical: Fix[LogicalPlan], queryContext: QueryContext)
     : EitherT[Writer[PhaseResults, ?], PlannerError, Crystallized[WorkflowF]] = {
     import MongoQueryModel._
 
-    queryContext match {
+    queryContext.model match {
       case `3.2` =>
-        plan0[Workflow3_2F](logical)
+        val pl = JoinHandler.pipeline[Workflow3_2F](queryContext.statistics)
+        val mr = JoinHandler.mapReduce[Workflow3_2F]
+        val joinHandler =
+          JoinHandler[Workflow3_2F, WorkflowBuilder.M]((tpe, l, r) =>
+            pl(tpe, l, r) getOrElseF mr(tpe, l, r))
+
+        plan0[Workflow3_2F](joinHandler)(logical)
+
       case _     =>
-        plan0[Workflow2_6F](logical).map(_.inject[WorkflowF])
+        val joinHandler = JoinHandler.mapReduce[Workflow2_6F]
+        plan0[Workflow2_6F](joinHandler)(logical).map(_.inject[WorkflowF])
     }
   }
 }

@@ -99,7 +99,7 @@ class MongoDbFileSystemSpec
         val invalidData = testPrefix.map(_ </> dir("invaliddata"))
                             .liftM[FileSystemErrT]
 
-        "fail with `InvalidData` when attempting to save non-documents" ! prop {
+        "fail with `InvalidData` when attempting to save non-documents" >> prop {
           (data: Data, fname: Int) => isNotObj(data) ==> {
             val path = invalidData map (_ </> file(fname.toHexString))
 
@@ -375,6 +375,9 @@ object MongoDbFileSystemSpec {
     (Functor[Task] compose Functor[IList])
       .map(
         TestConfig.externalFileSystems(
-          FileSystemTest.fsTestConfig(MongoDBFsType, mongoDbFileSystemDef))
+          FileSystemTest.fsTestConfig(MongoDBFsType, mongoDbFileSystemDef)
+        ).handleWith[IList[FileSystemUT[FileSystem]]] {
+          case _: TestConfig.UnsupportedFileSystemConfig => Task.now(IList.empty)
+        }
       )(_.liftIO)
 }

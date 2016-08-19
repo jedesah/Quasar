@@ -210,10 +210,9 @@ object RenderTree extends RenderTreeInstances {
     program.eval(0)
   }
 
-  /**
-   (Effectfully) adds the given object(s) to a crude UI which shows them as trees
-   that can be interactively explored. Can be used with `unsafeTap` aka `<|` to capture
-   a value from the middle of some expression.
+  /** (Effectfully) adds the given object(s) to a crude UI which shows them as
+    * trees that can be interactively explored. Can be used with `unsafeTap` aka
+    * `<|` to capture a value from the middle of some expression.
    */
   def showSwing[A](as: A*)(implicit RA: RenderTree[A]): Unit = {
     import javax.swing._
@@ -346,46 +345,55 @@ object RenderTree extends RenderTreeInstances {
 
   // FIXME: needs puffnfresh/wartremover#226 fixed
   @SuppressWarnings(Array("org.wartremover.warts.ExplicitImplicitTypes"))
-  implicit def ntRenderTree[F[_], A: RenderTree](
-    implicit F: RenderTree ~> (RenderTree ∘ F)#λ):
+  implicit def naturalTransformation[F[_], A: RenderTree](
+    implicit F: Delay[RenderTree, F]):
       RenderTree[F[A]] =
     F(RenderTree[A])
 
-  implicit def fixRenderTree[F[_]](implicit RF: RenderTree ~> λ[α => RenderTree[F[α]]]):
+  implicit def fix[F[_]](implicit RF: Delay[RenderTree, F]):
       RenderTree[Fix[F]] =
     new RenderTree[Fix[F]] {
-      def render(v: Fix[F]) =
-        RF(fixRenderTree[F]).render(v.unFix).retype {
-          case h :: t => ("Fix:" + h) :: t
-          case Nil    => "Fix" :: Nil
-        }
+      def render(v: Fix[F]) = RF(fix[F]).render(v.unFix)
     }
 
-  implicit def cofreeRenderTree[F[_], A: RenderTree](implicit RF: RenderTree ~> λ[α => RenderTree[F[α]]]):
+  implicit def cofree[F[_], A: RenderTree](implicit RF: RenderTree ~> λ[α => RenderTree[F[α]]]):
       RenderTree[Cofree[F, A]] =
     new RenderTree[Cofree[F, A]] {
       def render(t: Cofree[F, A]) = {
-        NonTerminal(List("Cofree"), None, List(t.head.render, RF(cofreeRenderTree[F, A]).render(t.tail)))
+        NonTerminal(List("Cofree"), None, List(t.head.render, RF(cofree[F, A]).render(t.tail)))
       }
     }
 
-  implicit def coproductRenderTree[F[_], G[_], A]
-    (implicit RF: RenderTree[F[A]], RG: RenderTree[G[A]])
-    : RenderTree[Coproduct[F, G, A]] = new RenderTree[Coproduct[F, G, A]] {
-    def render(v: Coproduct[F, G, A]) =
-      v.run.fold(RF.render, RG.render)
-  }
+  implicit def coproduct[F[_], G[_], A]
+    (implicit RF: RenderTree[F[A]], RG: RenderTree[G[A]]):
+      RenderTree[Coproduct[F, G, A]] =
+    new RenderTree[Coproduct[F, G, A]] {
+      def render(v: Coproduct[F, G, A]) =
+        v.run.fold(RF.render, RG.render)
+    }
 }
 
 sealed abstract class RenderTreeInstances {
-  implicit val renderTreeUnit: RenderTree[Unit] = new RenderTree[Unit] {
+  implicit val unit: RenderTree[Unit] = new RenderTree[Unit] {
     def render(v: Unit) = Terminal(List("()", "Unit"), None)
   }
 
-  implicit def recursiveRenderTree[T[_[_]]: Recursive, F[_]: Functor](
-    implicit F: RenderTree ~> (RenderTree ∘ F)#λ):
+  implicit def recursive[T[_[_]]: Recursive, F[_]: Functor](
+    implicit F: Delay[RenderTree, F]):
       RenderTree[T[F]] =
     new RenderTree[T[F]] {
-      def render(v: T[F]) = F(recursiveRenderTree[T, F]).render(v.project)
+      def render(v: T[F]) = F(recursive[T, F]).render(v.project)
     }
+
+  implicit def coproductDelay[F[_], G[_]]
+    (implicit RF: Delay[RenderTree, F], RG: Delay[RenderTree, G]):
+      Delay[RenderTree, Coproduct[F, G, ?]] =
+    new Delay[RenderTree, Coproduct[F, G, ?]] {
+      def apply[A](ra: RenderTree[A]) = new RenderTree[Coproduct[F, G, A]] {
+        def render(v: Coproduct[F, G, A]) =
+          v.run.fold(RF(ra).render, RG(ra).render)
+      }
+    }
+
+
 }

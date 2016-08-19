@@ -1,0 +1,1 @@
+- Add WriteFile implementation for spark-local

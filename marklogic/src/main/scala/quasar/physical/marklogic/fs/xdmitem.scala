@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package quasar.physical.marklogic.xcc
+package quasar.physical.marklogic.fs
 
 import quasar.Predef._
 import quasar.Data
@@ -61,6 +61,6 @@ object xdmitem {
     case item: XSString                 => Data.Str(item.asString)
     case item: XSTime                   => ???
     case item: XSUntypedAtomic          => ???
-    case item                           => Data.NA // This case should not be hit although we can't prove it.
+    case _                              => Data.NA // This case should not be hit although we can't prove it.
   }
 }

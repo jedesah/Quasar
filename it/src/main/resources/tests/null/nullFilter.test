@@ -1,6 +1,8 @@
 {
   "name": "filter on is null",
 
+  "backends": { "postgresql": "pending" },
+
   "description": "expression with `is null` should be true whenever the same filter is satisfied",
 
   "data": "nulls.data",

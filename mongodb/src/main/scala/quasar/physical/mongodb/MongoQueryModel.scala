@@ -16,6 +16,8 @@
 
 package quasar.physical.mongodb
 
+import quasar.Predef._
+
 sealed trait MongoQueryModel
 
 object MongoQueryModel {
@@ -28,4 +30,11 @@ object MongoQueryModel {
   /** Adds \$lookup and \$distinct, several new operators, and makes
     * accumulation operators available in \$project. */
   case object `3.2` extends MongoQueryModel
+
+  def apply(version: List[Int]): MongoQueryModel = version match {
+    case x :: _      if x > 3  => MongoQueryModel.`3.2`
+    case 3 :: x :: _ if x >= 2 => MongoQueryModel.`3.2`
+    case 3 :: _                => MongoQueryModel.`3.0`
+    case _                     => MongoQueryModel.`2.6`
+  }
 }

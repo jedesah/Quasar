@@ -153,7 +153,7 @@ object managefile {
       })
 
     def ensureDstExists(dstColl: Collection): MongoFsM[Unit] =
-      EitherT(collectionsIn(dstColl.databaseName)
+      EitherT(collectionsIn(dstColl.database)
                 .filter(_ === dstColl)
                 .runLast
                 .map(_.toRightDisjunction(pathErr(pathNotFound(dst))).void))

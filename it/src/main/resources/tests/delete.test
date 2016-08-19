@@ -1,5 +1,6 @@
 {
     "name": "delete",
+    "backends": { "postgresql": "pending" },
     "data": "zips.data",
     "query": "delete from zips where pop < 100000",
     "predicate": "equalsExactly",

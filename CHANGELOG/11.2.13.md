@@ -1,0 +1,1 @@
+- Enable consant join eliding in join branches.

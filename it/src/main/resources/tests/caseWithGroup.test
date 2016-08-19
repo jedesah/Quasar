@@ -1,6 +1,8 @@
 {
     "name": "combine case (3-arg expr) with group by",
 
+    "backends": { "postgresql": "pending" },
+
     "data": "zips.data",
 
     "query": "select distinct

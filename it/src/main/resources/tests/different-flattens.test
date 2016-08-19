@@ -1,5 +1,6 @@
 {
     "name": "merge differently-nested flattens",
+    "backends": { "postgresql": "pending" },
     "data": "user_comments.data",
     "query": "select profile from user_comments where (
                 userId                 LIKE \"%Dr%\" OR

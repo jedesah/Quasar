@@ -1,6 +1,10 @@
 {
   "name": "join where the left hand side is constant",
-  "backends": { "mongodb_read_only": "pending" },
+
+  "backends": {
+    "mongodb_read_only": "pending",
+    "postgresql":        "pending"
+  },
 
   "data": "../largeZips.data",
 

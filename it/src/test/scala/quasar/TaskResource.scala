@@ -48,6 +48,7 @@ object TaskResource {
     case object Start extends RsrcState
     case class Acquiring(id: Long) extends RsrcState
     case class Acquired(a: A) extends RsrcState
+    case class Failed(t: Throwable) extends RsrcState
 
     val signal = async.signalOf[RsrcState](Start)
 
@@ -62,11 +63,14 @@ object TaskResource {
       signal.continuous.take(1).runLast.flatMap(orFail)
 
     /** Asynchronously wait for the signal to contain the resource, which
-      * will have been acquired by another thread.
+      * will have been acquired by another thread, or fail if that thread failed.
       */
     val awaitAcquired: Task[A] =
       // NB: something effectful is hiding in the `discrete` process
-      Task.delay(signal.discrete.collect { case Acquired(a) => a }.take(1).runLast).join.flatMap(orFail)
+      Task.delay(signal.discrete.collect {
+        case Acquired(a) => Task.now(a)
+        case Failed(t)   => Task.fail(t)
+      }.take(1).runLast).join.flatMap(orFail).join
 
     new TaskResource[A] {
       def get = {
@@ -75,7 +79,10 @@ object TaskResource {
             case Some(Start) => Acquiring(id).some
             case otherwise   => otherwise
           } flatMap {
-            case Some(Acquiring(`id`)) => acquire >>= (a => signal.set(Acquired(a)).as(a))
+            case Some(Acquiring(`id`)) =>
+              acquire.attempt.flatMap(_.fold(
+                e => signal.set(Failed(e)) *> Task.fail(e),
+                a => signal.set(Acquired(a)).as(a)))
             case _                     => awaitAcquired
           }
 

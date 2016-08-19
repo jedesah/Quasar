@@ -22,8 +22,11 @@ import quasar.fp._
 import quasar.namegen._
 import quasar._, Planner._
 import quasar.javascript._
-import quasar.std.StdLib._
 import quasar.jscore, jscore.{JsCore, JsFn}
+import quasar.physical.mongodb.accumulator._
+import quasar.physical.mongodb.expression._
+import quasar.physical.mongodb.workflow._
+import quasar.std.StdLib._
 import quasar.qscript._
 
 import matryoshka._, Recursive.ops._, FunctorT.ops._
@@ -32,11 +35,6 @@ import scalaz._, Scalaz._
 sealed trait WorkflowBuilderF[F[_], +A]
 
 object WorkflowBuilder {
-  import quasar.physical.mongodb.accumulator._
-  import quasar.physical.mongodb.expression._
-  import Workflow._
-  import IdHandling._
-
   /** A partial description of a query that can be run on an instance of MongoDB */
   type WorkflowBuilder[F[_]] = Fix[WorkflowBuilderF[F, ?]]
   /** If we know what the shape is, represents the list of Fields. */
@@ -84,7 +82,7 @@ object WorkflowBuilder {
           case (_, index) => BsonField.Name("_" + index)
         })(
         // Nb. This read is an arbitrary value that allows us to compare the partial function
-        $read[F](Collection("", "")))
+        $read[F](Collection(DatabaseName(""), CollectionName(""))))
   }
   object ShapePreservingBuilder {
     def apply[F[_]: Coalesce](
@@ -559,7 +557,7 @@ object WorkflowBuilder {
                 None)
           })
       case DocBuilderF(src, shape) =>
-        workflow(src).flatMap { case (wf, base) =>
+        generateWorkflow(src).flatMap { case (wf, base) =>
           commonShape(rewriteDocPrefix(shape, base)).fold(
             fail(_),
             s => shape.keys.toList.toNel.fold[M[CollectionBuilderF[F]]](
@@ -578,7 +576,7 @@ object WorkflowBuilder {
                 fields.some))))
         }
       case ArrayBuilderF(src, shape) =>
-        workflow(src).flatMap { case (wf, base) =>
+        generateWorkflow(src).flatMap { case (wf, base) =>
           lift(shape.traverse(exprToJs).map(jsExprs =>
             CollectionBuilderF(
               chain(wf,
@@ -647,7 +645,7 @@ object WorkflowBuilder {
               else
                 obj.keys.toList.toNel.fold[M[CollectionBuilderF[F]]](
                   fail(InternalError("A shape with no fields does not make sense")))(
-                  fields => workflow(wb).flatMap { case (wf, base0) =>
+                  fields => generateWorkflow(wb).flatMap { case (wf, base0) =>
                     emitSt(ungrouped.size match {
                       case 0 =>
                         state[NameGen, Fix[F]](chain(wf,
@@ -699,7 +697,7 @@ object WorkflowBuilder {
             }, base, struct)
         }
       case sb @ SpliceBuilderF(_, _) =>
-        workflow(sb.src).flatMap { case (wf, base) =>
+        generateWorkflow(sb.src).flatMap { case (wf, base) =>
           lift(
             sb.toJs.map { splice =>
               CollectionBuilderF(
@@ -710,7 +708,7 @@ object WorkflowBuilder {
             })
         }
       case sb @ ArraySpliceBuilderF(_, _) =>
-        workflow(sb.src).flatMap { case (wf, base) =>
+        generateWorkflow(sb.src).flatMap { case (wf, base) =>
           lift(
             sb.toJs.map { splice =>
               CollectionBuilderF(
@@ -722,7 +720,7 @@ object WorkflowBuilder {
         }
     }
 
-  def workflow[F[_]: Coalesce](wb: WorkflowBuilder[F])
+  def generateWorkflow[F[_]: Coalesce](wb: WorkflowBuilder[F])
     (implicit ev0: WorkflowOpCoreF :<: F, ev1: Show[WorkflowBuilder[F]])
     : M[(Fix[F], Base)] =
     toCollectionBuilder(wb).map(x => (x.src, x.base))
@@ -734,12 +732,12 @@ object WorkflowBuilder {
       case (Field(ExprName), None) => (graph, Field(ExprName))
       case (_,       None)         =>
         (chain(graph,
-          Workflow.$project[F](Reshape(ListMap(ExprName -> \/-($var(base.toDocVar)))),
+          $project[F](Reshape(ListMap(ExprName -> \/-($var(base.toDocVar)))),
             ExcludeId)),
           Field(ExprName))
       case (_,       Some(fields)) =>
         (chain(graph,
-          Workflow.$project[F](
+          $project[F](
             Reshape(fields.map(name =>
               name -> \/-($var((base \ name).toDocVar))).toList.toListMap),
             if (fields.element(IdName)) IncludeId else ExcludeId)),
@@ -756,12 +754,6 @@ object WorkflowBuilder {
         else shift(base, struct, graph)._1
     }
 
-  private def $project[F[_]: Coalesce](shape: Reshape)
-    (implicit ev: WorkflowOpCoreF :<: F)
-    : FixOp[F] =
-    Workflow.$project[F](
-      shape,
-      shape.get(IdName).fold[IdHandling](IgnoreId)(κ(IncludeId)))
 
   def asLiteral[F[_]](wb: WorkflowBuilder[F]): Option[Bson] = wb.unFix match {
     case ValueBuilderF(value)                  => Some(value)
@@ -887,166 +879,6 @@ object WorkflowBuilder {
     val flip = new Combine {
       def apply[A, B](a1: A, a2: A)(f: (A, A) => B) = f(a2, a1)
       val flip = outer
-    }
-  }
-
-
-  // TODO: This is an approximation. If we could postpone this decision until
-  //      `Workflow.crush`, when we actually have a task (whether aggregation or
-  //       mapReduce) in hand, we would know for sure.
-  def preferMapReduce[F[_]: Coalesce: Crush: Crystallize: Functor](wb: WorkflowBuilder[F])
-    (implicit ev0: WorkflowOpCoreF :<: F, ev1: Show[WorkflowBuilder[F]])
-    : Boolean = {
-    // TODO: Get rid of this when we functorize WorkflowTask
-    def checkTask(wt: workflowtask.WorkflowTask): Boolean = wt match {
-      case workflowtask.FoldLeftTask(_, _)     => true
-      case workflowtask.MapReduceTask(_, _, _) => true
-      case workflowtask.PipelineTask(src, _)   => checkTask(src)
-      case _                                   => false
-    }
-
-    workflow[F](wb).evalZero.fold(
-      κ(false),
-      wf => checkTask(task(Crystallize[F].crystallize(wf._1))))
-  }
-
-  def join[F[_]: Functor: Coalesce: Crush: Crystallize](left0: WorkflowBuilder[F], right0: WorkflowBuilder[F],
-    tpe: GenericFunc[_],
-    leftKey0: List[WorkflowBuilder[F]], leftJs0: Option[List[JsFn]],
-    rightKey0: List[WorkflowBuilder[F]], rightJs0: Option[List[JsFn]])
-    (implicit ev0: WorkflowOpCoreF :<: F, ev1: Show[WorkflowBuilder[F]])
-    : M[WorkflowBuilder[F]] = {
-
-    import Js._
-
-    val ops = Ops[F]
-    import ops._
-
-    // FIXME: these have to match the names used in the logical plan. Should
-    //        change this to ensure left0/right0 are `Free` and pull the names
-    //        from those.
-    val leftField0: BsonField.Name = BsonField.Name("left")
-    val rightField0: BsonField.Name = BsonField.Name("right")
-
-    def keyMap(keyExpr: List[JsFn], rootField: BsonField.Name, otherField: BsonField.Name): AnonFunDecl =
-      $MapF.mapKeyVal(("key", "value"),
-        keyExpr match {
-          case Nil => Js.Null
-          case _   =>
-            jscore.Obj(keyExpr.map(_(jscore.ident("value"))).zipWithIndex.foldLeft[ListMap[jscore.Name, JsCore]](ListMap[jscore.Name, JsCore]()) {
-              case (acc, (j, i)) => acc + (jscore.Name(i.toString) -> j)
-            }).toJs
-        },
-        AnonObjDecl(List(
-          (otherField.asText, AnonElem(Nil)),
-          (rootField.asText, AnonElem(List(Ident("value")))))))
-
-    def jsReduce(src: WorkflowBuilder[F], key: List[JsFn],
-                 rootField: BsonField.Name, otherField: BsonField.Name):
-        (WorkflowBuilder[F], FixOp[F]) =
-      (src, $map[F](keyMap(key, rootField, otherField), ListMap()))
-
-    def wbReduce(src: WorkflowBuilder[F], key: List[WorkflowBuilder[F]],
-                 rootField: BsonField.Name, otherField: BsonField.Name):
-        (WorkflowBuilder[F], FixOp[F]) =
-      (DocBuilder(
-        reduce(groupBy(src, key))($push(_)),
-        ListMap(
-          rootField             -> \/-($$ROOT),
-          otherField            -> \/-($literal(Bson.Arr(Nil))),
-          BsonField.Name("_id") -> \/-($include()))),
-        ι)
-
-    val (left, right, leftField, rightField) =
-      (leftJs0, rightJs0) match {
-        case (Some(js), _)
-            if preferMapReduce(left0) && !preferMapReduce(right0) =>
-          (wbReduce(right0, rightKey0, rightField0, leftField0),
-            jsReduce(left0, js, leftField0, rightField0),
-            rightField0, leftField0)
-        case (_, Some(js)) =>
-          (wbReduce(left0, leftKey0, leftField0, rightField0),
-            jsReduce(right0, js, rightField0, leftField0),
-            leftField0, rightField0)
-        case (Some(js), _) =>
-          (wbReduce(right0, rightKey0, rightField0, leftField0),
-            jsReduce(left0, js, leftField0, rightField0),
-            rightField0, leftField0)
-        case (None, None) =>
-          (wbReduce(left0, leftKey0, leftField0, rightField0),
-            wbReduce(right0, rightKey0, rightField0, leftField0),
-            leftField0, rightField0)
-      }
-
-    val nonEmpty: Selector.SelectorExpr = Selector.NotExpr(Selector.Size(0))
-
-    def padEmpty(side: BsonField): Expression =
-      $cond($eq($size($var(DocField(side))), $literal(Bson.Int32(0))),
-        $literal(Bson.Arr(List(Bson.Doc(ListMap())))),
-        $var(DocField(side)))
-
-    def buildProjection(l: Expression, r: Expression): FixOp[F] =
-      $project[F](Reshape(ListMap(leftField -> \/-(l), rightField -> \/-(r)))).apply(_)
-
-    // TODO exhaustive pattern match
-    def buildJoin(src: Fix[F], tpe: GenericFunc[_]): Fix[F] =
-      tpe match {
-        case set.FullOuterJoin =>
-          chain(src,
-            buildProjection(padEmpty(leftField), padEmpty(rightField)))
-        case set.LeftOuterJoin =>
-          chain(src,
-            $match[F](Selector.Doc(ListMap(
-              leftField.asInstanceOf[BsonField] -> nonEmpty))),
-            buildProjection($var(DocField(leftField)), padEmpty(rightField)))
-        case set.RightOuterJoin =>
-          chain(src,
-            $match[F](Selector.Doc(ListMap(
-              rightField.asInstanceOf[BsonField] -> nonEmpty))),
-            buildProjection(padEmpty(leftField), $var(DocField(rightField))))
-        case set.InnerJoin =>
-          chain(
-            src,
-            $match[F](
-              Selector.Doc(ListMap(
-                leftField.asInstanceOf[BsonField] -> nonEmpty,
-                rightField -> nonEmpty))))
-        case _ => scala.sys.error("How did this get here?")
-      }
-
-    val rightReduce =
-      AnonFunDecl(List("key", "values"),
-        List(
-          VarDef(List(("result",
-            AnonObjDecl(List(
-              (leftField.asText, AnonElem(Nil)),
-              (rightField.asText, AnonElem(Nil))))))),
-          Call(Select(Ident("values"), "forEach"),
-            List(AnonFunDecl(List("value"),
-              // TODO: replace concat here with a more efficient operation
-              //      (push or unshift)
-              List(
-                BinOp("=",
-                  Select(Ident("result"), leftField.asText),
-                  Call(Select(Select(Ident("result"), leftField.asText), "concat"),
-                    List(Select(Ident("value"), leftField.asText)))),
-                BinOp("=",
-                  Select(Ident("result"), rightField.asText),
-                  Call(Select(Select(Ident("result"), rightField.asText), "concat"),
-                    List(Select(Ident("value"), rightField.asText)))))))),
-          Return(Ident("result"))))
-
-    (workflow(left._1) |@| workflow(right._1)) { case ((l, _), (r, _)) =>
-      CollectionBuilder(
-        chain(
-          $foldLeft[F](
-            left._2(l),
-            chain(r, right._2, $reduce[F](rightReduce, ListMap()))),
-          (op: Fix[F]) => buildJoin(op, tpe),
-          $unwind[F](DocField(leftField)),
-          $unwind[F](DocField(rightField))),
-        Root(),
-        None)
     }
   }
 
@@ -1271,7 +1103,7 @@ object WorkflowBuilder {
 
       case (ArrayBuilderF(src, shape), _) =>
         merge(src, right).flatMap { case (lbase, rbase, wb) =>
-          workflow(ArrayBuilder(wb, shape.map(rewriteExprPrefix(_, lbase)))).flatMap { case (wf, base) =>
+          generateWorkflow(ArrayBuilder(wb, shape.map(rewriteExprPrefix(_, lbase)))).flatMap { case (wf, base) =>
             I.prj(wf.unFix).cata(
               {
                 case $ProjectF(psrc, Reshape(shape), idx) =>

@@ -6,8 +6,10 @@ import sbt._, Keys._
 
 object Dependencies {
   private val argonautVersion   = "6.2-M3"
+  private val doobieVersion     = "0.3.0"
   private val http4sVersion     = "0.14.1a"
   private val jawnVersion       = "0.8.4"
+  private val jacksonVersion    = "2.8.1"
   private val monocleVersion    = "1.2.2"
   private val nettyVersion      = "4.1.3.Final"
   private val pathyVersion      = "0.2.1"
@@ -59,12 +61,25 @@ object Dependencies {
     "io.netty"    % "netty-buffer"         % nettyVersion,
     "io.netty"    % "netty-handler"        % nettyVersion
   )
+  val postgresql = Seq(
+    "org.tpolecat" %% "doobie-core"               % doobieVersion % "compile, test",
+    "org.tpolecat" %% "doobie-contrib-postgresql" % doobieVersion % "compile, test"
+  )
+  def sparkcore = Seq(
+    "io.netty"          %  "netty-all"  % nettyVersion,
+    ("org.apache.spark" %% "spark-core" % "1.6.2")
+      .exclude("commons-beanutils", "commons-beanutils-core")
+      .exclude("commons-collections", "commons-collections")
+      .exclude("com.esotericsoftware.minlog", "minlog")
+      .exclude("org.spark-project.spark", "unused")
+      .exclude("io.netty", "netty-all")
+  )
   def marklogic = Seq(
-    "com.marklogic"  %  "java-client-api"   % "3.0.5",
-    "com.marklogic"  %  "marklogic-xcc"     % "8.0.5",
-    "org.spire-math" %% "jawn-argonaut"     % jawnVersion,
-    "org.spire-math" %% "jawn-parser"       % jawnVersion,
-    "org.http4s"     %% "jawn-streamz"      % "0.8.1"
+    "com.fasterxml.jackson.core" %  "jackson-core"        % jacksonVersion,
+    "com.fasterxml.jackson.core" %  "jackson-databind"    % jacksonVersion,
+    "com.fasterxml.uuid"         %  "java-uuid-generator" % "3.1.4",
+    "com.marklogic"              %  "marklogic-xcc"       % "8.0.5",
+    "org.spire-math"             %% "jawn-parser"         % jawnVersion
   )
   def web = Seq(
     "ch.qos.logback"  % "logback-classic"     %      "1.1.7",

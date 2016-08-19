@@ -1,6 +1,9 @@
 {
     "name": "concat known array structure",
-    "backends": { "mongodb_read_only": "pending" },
+    "backends": {
+        "mongodb_read_only": "pending",
+        "postgresql":        "pending"
+    },
     "data": "largeZips.data",
     "query": "select [ city, pop ] from largeZips",
     "predicate": "containsAtLeast",

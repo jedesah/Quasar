@@ -1,5 +1,6 @@
 {
     "name": "filter on contains",
+    "backends": { "postgresql": "pending" },
     "data": "zips.data",
     "query": "select * from zips where 43.058514 in loc[_]",
     "predicate": "equalsExactly",

@@ -1,0 +1,1 @@
+- fix hang in regression tests when connection failure occurs

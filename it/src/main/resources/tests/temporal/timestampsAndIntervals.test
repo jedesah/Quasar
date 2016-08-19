@@ -1,6 +1,8 @@
 {
   "name": "timestamp and interval syntax",
 
+  "backends": { "postgresql": "pending" },
+
   "data": "../days.data",
 
   "query": "select day, (ts - timestamp(\"2014-08-17T00:00:00.000Z\")) / interval(\"PT1H0M0S\") as hoursSinceSunday

@@ -50,7 +50,7 @@ abstract class FileSystemTest[S[_]](
   val fileSystems: Task[IList[FileSystemUT[S]]]
 ) extends quasar.QuasarSpecification {
 
-  args.report(showtimes = true)
+  sequential
 
   type F[A]      = Free[S, A]
   type FsTask[A] = FileSystemErrT[Task, A]
@@ -86,6 +86,9 @@ abstract class FileSystemTest[S[_]](
 
   implicit class RunFsTask[A](fst: FsTask[A]) {
     import Leibniz.===
+
+    def run_\/ : FileSystemError \/ A =
+      fst.run.unsafePerformSync
 
     def runEither: Either[FileSystemError, A] =
       fst.run.unsafePerformSync.toEither
