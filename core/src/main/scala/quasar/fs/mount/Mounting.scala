@@ -17,7 +17,7 @@
 package quasar.fs.mount
 
 import slamdata.Predef._
-import quasar.Variables
+import quasar.{QuasarError, Variables}
 import quasar.contrib.pathy._
 import quasar.effect.LiftedOps
 import quasar.fp.ski._
@@ -66,7 +66,7 @@ object Mounting {
   /** Indicates the wrong type of path (file vs. dir) was supplied to the `mount`
     * convenience function.
     */
-  final case class PathTypeMismatch(path: APath) extends scala.AnyVal
+  final case class PathTypeMismatch(path: APath) extends QuasarError
 
   object PathTypeMismatch {
     implicit val pathTypeMismatchShow: Show[PathTypeMismatch] =

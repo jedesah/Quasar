@@ -74,6 +74,8 @@ package object main extends Logging {
     // sparkcore.fs.local.SparkLocalBackendModule.definition translate injectFT[Task, PhysFsEff]
   ).fold
 
+  val QuasarAPI = QuasarAPIImpl[Free[CoreEff, ?]](liftFT)
+
   /**
    * The physical filesystems currently supported.  Please note that it
    * is really best if you only sequence this task ''once'' per runtime.

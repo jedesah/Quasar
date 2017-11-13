@@ -18,6 +18,7 @@ package quasar.fs
 
 import slamdata.Predef._
 import quasar.contrib.pathy._
+import quasar.effect.Failure
 import quasar.fp.numeric.{Natural, Positive}
 import eu.timepit.refined.auto._
 
@@ -87,6 +88,11 @@ object ReadFile {
       */
     def scanAll(file: AFile): Process[M, Data] =
       scan(file, 0L, None)
+
+    def scanAll_(file: AFile)(implicit S0: Failure[FileSystemError, ?] :<: S): Process[Free[S, ?], Data] = {
+      val nat: M ~> Free[S, ?] = λ[M ~> Free[S, ?]] { x => Failure.Ops[FileSystemError, S].unattempt(x.run) }
+      scanAll(file).translate(nat)
+    }
   }
 
   object Ops {

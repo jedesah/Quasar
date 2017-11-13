@@ -80,4 +80,7 @@ object eitherT extends EitherTInstances {
     def flattenLeft: EitherT[F, E, A] =
       a.run.flatMapF(_.point[F])
   }
+
+  def leftMapNT[F[_]: Functor, E0, E1](f: E0 => E1): EitherT[F, E0, ?] ~> EitherT[F, E1, ?] =
+    λ[EitherT[F, E0, ?] ~> EitherT[F, E1, ?]](_.leftMap(f))
 }

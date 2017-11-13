@@ -16,7 +16,13 @@
 
 package quasar.main.api
 
+import slamdata.Predef._
+import quasar.QuasarError
 import quasar.contrib.scalaz._
+import quasar.contrib.scalaz.stream._
+import quasar.db.DbConnectionConfig
+import quasar.fs.FileSystemError.pathErr
+import quasar.fs.PathError.pathNotFound
 import quasar.fs.mount._
 import quasar.fp.ski._
 import quasar.main._
@@ -27,8 +33,31 @@ import scala.StringContext
 
 import pathy.Path._
 import scalaz._, Scalaz._
+import scalaz.concurrent.Task
 
 class ApiSpec extends quasar.Qspec {
+
+  def newQuasar(metaConfig: Option[DbConnectionConfig]): Task[Quasar] =
+    metaConfig.fold(MetaStoreFixture.createNewTestMetaStoreConfig)(Task.now(_)).flatMap { config =>
+      Quasar.initWithDbConfig(
+        BackendConfig.Empty,
+        config,
+        _ => ().point[MainTask]).leftMap(e => new scala.Exception(e.shows)).run.unattempt
+    }
+
+  def testProgram[A](metaConfig: Option[DbConnectionConfig])(test: Free[CoreEff, A]): Task[A] =
+    for {
+      quasarFS <- newQuasar(metaConfig)
+      q        <- quasarFS.taskInter
+      result   <- test.foldMap(q).onFinish(κ(quasarFS.shutdown))
+    } yield result
+
+  def testProgramErrors[A](metaConfig: Option[DbConnectionConfig])(test: Free[CoreEff, A]): Task[QuasarError \/ A] =
+    for {
+      quasarFS <- newQuasar(metaConfig)
+      q        <- quasarFS.interpWithErrs
+      result   <- test.foldMap(q).run.onFinish(κ(quasarFS.shutdown))
+    } yield result
 
   "Api" >> {
     "change metastore at runtime" >> {
@@ -37,43 +66,47 @@ class ApiSpec extends quasar.Qspec {
       val mount = Mounting.Ops[CoreEff]
       (for {
         firstMetaConf <- MetaStoreFixture.createNewTestMetaStoreConfig
+        otherMetaConf <- MetaStoreFixture.createNewTestMetaStoreConfig
 
-        quasarFS <- Quasar.initWithDbConfig(
-          BackendConfig.Empty,
-          firstMetaConf,
-          _ => ().point[MainTask]).leftMap(e => new scala.Exception(e.shows)).run.unattempt
-
-        result <- (for {
-          run0          <- quasarFS.taskInter
-          _             <- mount.mountOrReplace(sampleMountPath, sampleMount, false).foldMap(run0)
-          mountIsThere  <- mount.lookupConfig(sampleMountPath).run.run.map(_.isDefined).foldMap(run0)
-          otherMetaConf <- MetaStoreFixture.createNewTestMetaStoreConfig
-          _             <- MetaStoreLocation.Ops[CoreEff].set(otherMetaConf, initialize = true).foldMap(run0)
-          noLongerThere <- mount.lookupConfig(sampleMountPath).run.run.map(_.empty).foldMap(run0)
-          _             <- MetaStoreLocation.Ops[CoreEff].set(firstMetaConf, initialize = true).foldMap(run0)
-          thereAgain    <- mount.lookupConfig(sampleMountPath).run.run.map(_.isDefined).foldMap(run0)
-        } yield {
-          mountIsThere must_=== true
-          noLongerThere must_=== true
-          thereAgain must_=== true
-        }).onFinish(κ(quasarFS.shutdown))
+        result <- testProgram(firstMetaConf.some) {
+          for {
+            _             <- mount.mountOrReplace(sampleMountPath, sampleMount, false)
+            mountIsThere  <- mount.lookupConfig(sampleMountPath).run.run.map(_.isDefined)
+            _             <- MetaStoreLocation.Ops[CoreEff].set(otherMetaConf, initialize = true)
+            noLongerThere <- mount.lookupConfig(sampleMountPath).run.run.map(_.empty)
+            _             <- MetaStoreLocation.Ops[CoreEff].set(firstMetaConf, initialize = true)
+            thereAgain    <- mount.lookupConfig(sampleMountPath).run.run.map(_.isDefined)
+          } yield {
+            mountIsThere must_=== true
+            noLongerThere must_=== true
+            thereAgain must_=== true
+          }
+        }
       } yield result).unsafePerformSync
     }
 
     "attempting to change the metastore to the same one succeeds without doing anything" >> {
       (for {
         metaConf <- MetaStoreFixture.createNewTestMetaStoreConfig
-        quasarFS <- Quasar.initWithDbConfig(
-          BackendConfig.Empty,
-          metaConf,
-          _ => ().point[MainTask]).leftMap(e => new scala.Exception(e.shows)).run.unattempt
-        run0 <- quasarFS.taskInter
-        result <- (for {
-          result  <- MetaStoreLocation.Ops[CoreEff].set(metaConf, initialize = true).foldMap(run0)
-        } yield {
-          result must_=== ().right
-        }).onFinish(κ(quasarFS.shutdown))
-      } yield result).unsafePerformSync
+        result <- testProgram(metaConf.some) {
+          MetaStoreLocation.Ops[CoreEff].set(metaConf, initialize = true)
+        }
+      } yield result must_= ().right).unsafePerformSync
+    }
+    "can create a view even if it references a non-existent file and get an error when" >> {
+      "querying" >> {
+        testProgram(None)(for {
+          _      <- QuasarAPI.createView(rootDir </> file("badView"), sqlB"select * from noThing")
+          result <- QuasarAPI.query(rootDir, sqlB"select * from badView")
+        } yield result must_=== pathErr(pathNotFound(rootDir </> file("noThing"))).left.right).unsafePerformSync
+      }
+      "or reading the view" >> {
+        testProgramErrors(None)(for {
+          _      <- QuasarAPI.createView(rootDir </> file("badView"), sqlB"select * from noThing")
+          result <- QuasarAPI.readFile(rootDir </> file("badView")).runLogCatch
+        } yield result).unsafePerformSync must_===
+          pathErr(pathNotFound(rootDir </> file("noThing"))).left
+      }
     }
   }
 }

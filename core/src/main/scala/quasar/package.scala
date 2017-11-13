@@ -37,6 +37,9 @@ import matryoshka.implicits._
 import scalaz._, Scalaz._
 
 package object quasar {
+
+  type QuasarErrT[M[_], A] = EitherT[M, QuasarError, A]
+
   private def phase[A: RenderTree](label: String, r: SemanticErrors \/ A):
       CompileM[A] =
     EitherT(r.point[PhaseResultW]) flatMap { a =>

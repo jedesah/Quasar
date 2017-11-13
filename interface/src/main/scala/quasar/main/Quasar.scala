@@ -17,16 +17,20 @@
 package quasar.main
 
 import slamdata.Predef._
+import quasar.{QuasarError, QuasarErrT}
 import quasar.config.MetaStoreConfig
 import quasar.contrib.scalaz.catchable._
 import quasar.contrib.scalaz.concurrent._
 import quasar.contrib.scalaz.eitherT._
 import quasar.db.DbConnectionConfig
-import quasar.effect.{Read, Write}
+import quasar.effect.{Failure, Read, Write}
 import quasar.fp._
 import quasar.fp.free._
 import quasar.fp.numeric._
+import quasar.fs.{FileSystemError, PhysicalError}
+import quasar.fs.mount.{Mounting, MountingError}
 import quasar.fs.mount.cache.VCache
+import quasar.fs.mount.module.Module
 import quasar.metastore._
 
 import scalaz._, Scalaz._
@@ -43,11 +47,31 @@ final case class Quasar(interp: CoreEff ~> QErrs_CRW_TaskM, shutdown: Task[Unit]
   val taskInter: Task[CoreEff ~> Task] =
     Quasar.toTask ∘ (_ compose interp)
 
+  def interpWithErrs: Task[CoreEff ~> EitherT[Task, QuasarError, ?]] = {
+    val lift = liftMT[Task, QuasarErrT]
+    TaskRef(Tags.Min(none[VCache.Expiration])).map{ r =>
+      val preserveErrors: QErrs_CRW_TaskM ~> EitherT[Task, QuasarError, ?] =
+        foldMapNT(
+          (Read.fromTaskRef(r) andThen lift) :+:
+            (Write.fromTaskRef(r) andThen lift) :+:
+            lift :+:
+            (Failure.toError[EitherT[Task, PhysicalError, ?], PhysicalError] andThen leftMapNT(e => e:QuasarError)) :+:
+            (Failure.toError[EitherT[Task, Module.Error, ?], Module.Error] andThen leftMapNT(e => e:QuasarError)) :+:
+            (Failure.toError[EitherT[Task, Mounting.PathTypeMismatch, ?], Mounting.PathTypeMismatch] andThen leftMapNT(e => e:QuasarError)) :+:
+            (Failure.toError[EitherT[Task, MountingError, ?], MountingError] andThen leftMapNT(e => e:QuasarError)) :+:
+            (Failure.toError[EitherT[Task, FileSystemError, ?], FileSystemError] andThen leftMapNT(e => e:QuasarError)))
+      interp andThen preserveErrors
+    }
+  }
+
   def extendShutdown(step: Task[Unit]): Quasar =
     copy(shutdown = shutdown.attemptNonFatal.void >> step)
 }
 
 object Quasar {
+
+  def initMimirOnly: MainTask[Quasar] =
+    init(BackendConfig.Empty)
 
   /** Initialize the Quasar FileSystem assuming all defaults
     * The metastore can be changed but it will not be persisted to the config file.

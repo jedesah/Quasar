@@ -45,7 +45,7 @@ object Module {
     implicit val order: Order[ResultHandle] = Order.orderBy(_.run)
   }
 
-  sealed trait Error
+  sealed trait Error extends QuasarError
 
   type ErrorT[M[_], A] = EitherT[M, Error, A]
   type Failure[A] = quasar.effect.Failure[Error, A]

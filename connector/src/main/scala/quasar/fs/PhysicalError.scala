@@ -16,6 +16,8 @@
 
 package quasar.fs
 
+import quasar.QuasarError
+
 import java.lang.Exception
 
 import monocle.macros.Lenses
@@ -29,7 +31,7 @@ import scalaz._
   * This should not be used to communicate configuration/validation errors at
   * mount-time as `DefinitionError` is more appropriate in that case.
   */
-sealed abstract class PhysicalError {
+sealed abstract class PhysicalError extends QuasarError {
   val cause: Exception
 }
 

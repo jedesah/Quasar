@@ -17,7 +17,7 @@
 package quasar.fs
 
 import slamdata.Predef._
-import quasar.Data
+import quasar.{Data, QuasarError}
 import quasar.Planner.PlannerError
 import quasar.fp._
 import quasar.frontend.logicalplan.LogicalPlan
@@ -30,7 +30,7 @@ import pathy.Path.posixCodec
 import scalaz._
 import scalaz.syntax.show._
 
-sealed abstract class FileSystemError
+sealed abstract class FileSystemError extends QuasarError
 
 object FileSystemError {
   import QueryFile.ResultHandle

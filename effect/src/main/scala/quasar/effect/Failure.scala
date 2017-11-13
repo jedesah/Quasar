@@ -37,7 +37,7 @@ object Failure {
     extends LiftedOps[Failure[E, ?], S] {
 
     def attempt[A](fa: FreeS[A]): FreeS[E \/ A] =
-      fa.foldMap(attempt0).run
+      fa.foldMap(Failure.attempt).run
 
     def fail[A](e: E): FreeS[A] =
       lift(Fail(e))
@@ -83,14 +83,6 @@ object Failure {
         case Fail(e) => err.raiseError[A](e)
       }
     }
-
-    private val attempt0: S ~> G = new (S ~> G) {
-      def apply[A](sa: S[A]) =
-        S.prj(sa) match {
-          case Some(err) => attemptE(err)
-          case None      => Free.liftF(sa).liftM[GT]
-        }
-    }
   }
 
   object Ops {
@@ -110,6 +102,14 @@ object Failure {
   def toRuntimeError[F[_]: Catchable, E: Show]: Failure[E, ?] ~> F =
     toCatchable[F, RuntimeException]
       .compose[Failure[E, ?]](mapError(e => new RuntimeException(e.shows)))
+
+  def attempt[S[_], E](implicit S: Failure[E, ?] :<: S): S ~> EitherT[Free[S, ?], E, ?] = new (S ~> EitherT[Free[S, ?], E, ?]) {
+    def apply[A](sa: S[A]) =
+      S.prj(sa) match {
+        case Some(Fail(err)) => EitherT.left(err.point[Free[S, ?]])
+        case None            => EitherT.right(Free.liftF(sa))
+      }
+  }
 
   def monadError_[E, S[_]](implicit O: Ops[E, S]): MonadError_[Free[S, ?], E] =
     new MonadError_[Free[S, ?], E] {
