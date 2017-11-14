@@ -70,7 +70,7 @@ object Fixture {
     mounts: MountingsConfig = MountingsConfig.empty,
     metaRefT: Task[TaskRef[MetaStore]] = MetaStoreFixture.createNewTestMetastore().flatMap(TaskRef(_)),
     persist: quasar.db.DbConnectionConfig => MainTask[Unit] = _ => ().point[MainTask]
-  ): Task[(CoreEffIO ~> QErrs_TaskM, Task[(InMemState, Map[APath, MountConfig])])] =
+  ): Task[(CoreEff ~> QErrs_TaskM, Task[(InMemState, Map[APath, MountConfig])])] =
     for {
       r         <- TaskRef(Tags.Min(Option.empty[VCache.Expiration]))
       metaRef   <- metaRefT
@@ -78,7 +78,7 @@ object Fixture {
       (fs, ref) = result
       eval      <- CoreEff.defaultImpl(fs, metaRef, persist)
     } yield
-      (injectFT[Task, QErrs_CRW_Task] :+: eval andThen
+      (eval andThen
         foldMapNT(
           (Read.fromTaskRef(r) andThen injectFT[Task, QErrs_Task])  :+:
             (Write.fromTaskRef(r) andThen injectFT[Task, QErrs_Task]) :+:
@@ -90,7 +90,7 @@ object Fixture {
     mounts: MountingsConfig = MountingsConfig.empty,
     metaRefT: Task[TaskRef[MetaStore]] = MetaStoreFixture.createNewTestMetastore().flatMap(TaskRef(_)),
     persist: quasar.db.DbConnectionConfig => MainTask[Unit] = _ => ().point[MainTask]
-  ): Task[CoreEffIO ~> QErrs_TaskM] =
+  ): Task[CoreEff ~> QErrs_TaskM] =
     inMemFSEvalInspect(state, mounts, metaRefT, persist).map{ case (inter, ref) => inter }
 
   def inMemFSEvalSimple(
@@ -98,7 +98,7 @@ object Fixture {
     mounts: MountingsConfig = MountingsConfig.empty,
     metaRefT: Task[TaskRef[MetaStore]] = MetaStoreFixture.createNewTestMetastore().flatMap(TaskRef(_)),
     persist: quasar.db.DbConnectionConfig => MainTask[Unit] = _ => ().point[MainTask]
-  ): Task[CoreEffIO ~> Task] =
+  ): Task[CoreEff ~> Task] =
     inMemFSEval(state, mounts, metaRefT, persist)
       .map(_ andThen foldMapNT(reflNT[Task] :+: QErrs.toCatchable[Task]))
 }

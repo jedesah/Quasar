@@ -101,6 +101,6 @@ object Fixture {
     persist: quasar.db.DbConnectionConfig => MainTask[Unit] = _ => ().point[MainTask]
   ): Task[(CoreEffIO ~> ResponseOr, Task[(InMemState, Map[APath, MountConfig])])] =
     inMemFSEvalInspect(state, mounts, metaRefT, persist).map { case (inter, ref) =>
-      (foldMapNT(liftMT[Task, ResponseT] :+: qErrsToResponseT[Task]) compose inter, ref)
+      (foldMapNT(liftMT[Task, ResponseT] :+: qErrsToResponseT[Task]) compose (injectFT[Task, QErrs_Task] :+: inter), ref)
     }
 }

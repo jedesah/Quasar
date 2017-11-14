@@ -23,7 +23,7 @@ import quasar.Data
 import quasar.fp.free.foldMapNT
 import quasar.fs.{FileSystemErrT, ReadFile}
 import quasar.fs.mount.{MountConfig, MountingsConfig}
-import quasar.main.CoreEffIO
+import quasar.main.CoreEff
 import quasar.main.Fixture._
 import quasar.sql._
 
@@ -40,7 +40,7 @@ class ViewsAndModulesSpec extends quasar.Qspec {
       val moduleDir: ADir = rootDir </> dir("a") </> dir("foo")
       val mounts = Map[APath, MountConfig](viewFile -> view, moduleDir -> module)
       val interp = foldMapNT(inMemFSEvalSimple(mounts = MountingsConfig(mounts)).unsafePerformSync)
-      val program = ReadFile.Ops[CoreEffIO].scanAll(viewFile).translate(Hoist[FileSystemErrT].hoist(interp))
+      val program = ReadFile.Ops[CoreEff].scanAll(viewFile).translate(Hoist[FileSystemErrT].hoist(interp))
       program.runLog.run.unsafePerformSync must_= Vector(Data.Int(1)).right
     }
   }
